@@ -340,8 +340,8 @@ $osVerString = if ($IsWin) { "Microsoft Windows $($NtOSVersion.ToString())" } el
 # arm64,x64
 # uname -m: arm64/aarch64,x86_64
 if ($IsWin) {
-    $__1k_archs = @{9="x64"; 10="arm64"}
-    $__1k_arch_code = [int](Get-CimInstance Win32_Processor).Architecture[0]
+    $__1k_archs = @{9="x64"; 12="arm64"}
+    $__1k_arch_code = [int](Get-CimInstance -ClassName Win32_Processor -ErrorAction Stop | Select-Object -First 1).Architecture
     $HOST_CPU = $__1k_archs[$__1k_arch_code]
 } else {
     $HOST_CPU = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLower()
@@ -1164,7 +1164,7 @@ function setup_nasm() {
             $1k.addpath($nasm_bin)
         }
         elseif ($IsLinux) {
-            if ($(which dpkg)) {
+            if (Get-Command dpkg -ErrorAction SilentlyContinue) {
                 sudo apt-get install -y nasm
             }
         }
@@ -1213,10 +1213,10 @@ function setup_unzip() {
     $unzip_cmd_info = Get-Command 'unzip' -ErrorAction SilentlyContinue
     if (!$unzip_cmd_info) {
         if ($IsLinux) {
-            if ($(which dpkg)) {
+            if (Get-Command dpkg -ErrorAction SilentlyContinue) {
                 sudo apt-get install -y unzip
             }
-            elseif($(which pacman)) {
+            elseif (Get-Command pacman -ErrorAction SilentlyContinue) {
                 sudo pacman -S --needed --noconfirm unzip
             }
             else {
@@ -1247,7 +1247,7 @@ function setup_7z() {
             $1k.addpath($7z_bin)
         }
         elseif ($IsLinux) {
-            if ($(which dpkg)) { sudo apt-get install -y p7zip-full }
+            if ($(Get-Command dpkg -ErrorAction SilentlyContinue)) { sudo apt-get install -y p7zip-full }
         }
         elseif ($IsMacOS) {
             brew install p7zip
