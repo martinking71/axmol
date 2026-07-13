@@ -1467,93 +1467,85 @@ bool Bundle3D::loadAnimationDataJson(std::string_view id, Animation3DData* anima
     else
         anim = ANIMATIONS;
 
-    int the_index               = -1;
     auto&& animation_data_array = _jsonReader[anim];
     if (animation_data_array.error())
         return false;
 
-    if (!id.empty())
+    // simdjson's on-demand values are forward-only. Parse the selected
+    // animation while it is first encountered instead of iterating the array
+    // to find an index and then attempting to revisit it with at().
+    for (auto&& animation_data : animation_data_array.get_array())
     {
-        int i = 0;
-        for (auto&& animation_data : animation_data_array.get_array())
+        if (!id.empty())
         {
             std::string_view keyid = animation_data[ID];
-            if (keyid == id)
-            {
-                the_index = static_cast<int>(i);
-            }
-            ++i;
+            if (keyid != id)
+                continue;
         }
-        if (the_index < 0)
-            return false;
-    }
-    else
-    {
-        the_index = 0;
-    }
 
-    auto&& animation_data_array_val_0 = animation_data_array.at(the_index);
+        animationdata->_totalTime = static_cast<float>(animation_data[LENGTH]);
 
-    animationdata->_totalTime = static_cast<float>(animation_data_array_val_0[LENGTH]);
-
-    auto&& bones = animation_data_array_val_0[BONES];
-    for (auto&& bone : bones.get_array())
-    {
-        std::string_view bone_name = bone[BONEID];
-        auto&& bone_keyframes      = bone[KEYFRAMES];
-        if (bone_keyframes.error())
-            continue;
-        size_t keyframe_size = bone_keyframes.count_elements();
-        animationdata->_rotationKeys[bone_name].reserve(keyframe_size);
-        animationdata->_scaleKeys[bone_name].reserve(keyframe_size);
-        animationdata->_translationKeys[bone_name].reserve(keyframe_size);
-
-        for (auto&& bone_keyframe : bone_keyframes)
+        auto&& bones = animation_data[BONES];
+        for (auto&& bone : bones.get_array())
         {
-            float keytime                    = static_cast<float>(bone_keyframe[KEYTIME]);
-            auto&& bone_keyframe_translation = bone_keyframe[TRANSLATION];
-            if (!bone_keyframe_translation.error())
+            std::string_view bone_name = bone[BONEID];
+            auto&& bone_keyframes      = bone[KEYFRAMES];
+            if (bone_keyframes.error())
+                continue;
+            size_t keyframe_size = bone_keyframes.count_elements();
+            animationdata->_rotationKeys[bone_name].reserve(keyframe_size);
+            animationdata->_scaleKeys[bone_name].reserve(keyframe_size);
+            animationdata->_translationKeys[bone_name].reserve(keyframe_size);
+
+            for (auto&& bone_keyframe : bone_keyframes)
             {
-                Vec3 val;
-                int i = 0;
-                for (auto&& axis_val : bone_keyframe_translation)
+                float keytime                    = static_cast<float>(bone_keyframe[KEYTIME]);
+                auto&& bone_keyframe_translation = bone_keyframe[TRANSLATION];
+                if (!bone_keyframe_translation.error())
                 {
-                    val.comps[i++] = static_cast<float>(axis_val);
-                    if (i >= 3)
-                        break;
+                    Vec3 val;
+                    int i = 0;
+                    for (auto&& axis_val : bone_keyframe_translation)
+                    {
+                        val.comps[i++] = static_cast<float>(axis_val);
+                        if (i >= 3)
+                            break;
+                    }
+                    animationdata->_translationKeys[bone_name].emplace_back(Animation3DData::Vec3Key(keytime, Vec3{val}));
                 }
-                animationdata->_translationKeys[bone_name].emplace_back(Animation3DData::Vec3Key(keytime, Vec3{val}));
-            }
-            auto&& bone_keyframe_rotation = bone_keyframe[ROTATION];
-            if (!bone_keyframe_rotation.error())
-            {
-                Quat val;
-                int i = 0;
-                for (auto&& axis_val : bone_keyframe_rotation)
+                auto&& bone_keyframe_rotation = bone_keyframe[ROTATION];
+                if (!bone_keyframe_rotation.error())
                 {
-                    val.comps[i++] = static_cast<float>(axis_val);
-                    if (i >= 4)
-                        break;
+                    Quat val;
+                    int i = 0;
+                    for (auto&& axis_val : bone_keyframe_rotation)
+                    {
+                        val.comps[i++] = static_cast<float>(axis_val);
+                        if (i >= 4)
+                            break;
+                    }
+                    animationdata->_rotationKeys[bone_name].emplace_back(Animation3DData::QuatKey(keytime, val));
                 }
-                animationdata->_rotationKeys[bone_name].emplace_back(Animation3DData::QuatKey(keytime, val));
-            }
-            auto&& bone_keyframe_scale = bone_keyframe[SCALE];
-            if (!bone_keyframe_scale.error())
-            {
-                Vec3 val;
-                int i = 0;
-                for (auto&& axis_val : bone_keyframe_scale)
+                auto&& bone_keyframe_scale = bone_keyframe[SCALE];
+                if (!bone_keyframe_scale.error())
                 {
-                    val.comps[i++] = static_cast<float>(axis_val);
-                    if (i >= 3)
-                        break;
+                    Vec3 val;
+                    int i = 0;
+                    for (auto&& axis_val : bone_keyframe_scale)
+                    {
+                        val.comps[i++] = static_cast<float>(axis_val);
+                        if (i >= 3)
+                            break;
+                    }
+                    animationdata->_scaleKeys[bone_name].emplace_back(Animation3DData::Vec3Key(keytime, val));
                 }
-                animationdata->_scaleKeys[bone_name].emplace_back(Animation3DData::Vec3Key(keytime, val));
             }
         }
+
+        return true;
     }
 
-    return true;
+    return false;
 }
 
 bool Bundle3D::loadAnimationDataBinary(std::string_view id, Animation3DData* animationdata)
