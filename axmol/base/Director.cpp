@@ -55,6 +55,7 @@ THE SOFTWARE.
 #include "axmol/base/FPSImages.h"
 #include "axmol/base/Scheduler.h"
 #include "axmol/base/Macros.h"
+#include "axmol/base/Profiling.h"
 #include "axmol/base/EventDispatcher.h"
 #include "axmol/base/CustomEvent.h"
 #include "axmol/base/Logging.h"
@@ -71,7 +72,7 @@ THE SOFTWARE.
 #    include "axmol/base/ScriptSupport.h"
 #endif
 
-#include "axmol/rhi/SamplerCache.h"
+#include "axmol/rhi/SamplerRegistry.h"
 #include "axmol/rhi/GraphicsCore.h"
 #include "axmol/renderer/VertexLayoutManager.h"
 
@@ -192,7 +193,7 @@ bool Director::init()
     // listen the event that renderer was recreated on Android/WP8
     _rendererRecreatedListener = CustomEventListener::create(EVENT_RENDERER_RECREATED, [this](CustomEvent*) {
         _isStatusLabelUpdated = true;  // Force recreation of textures
-        rhi::SamplerCache::getInstance()->rebuild();
+        rhi::SamplerRegistry::getInstance()->rebuild();
         rhi::ShaderCache::getInstance()->recompileAll();
     });
 
@@ -293,105 +294,6 @@ void Director::setRenderDefaults()
     _renderer->setDepthCompareFunc(rhi::CompareFunc::LESS_EQUAL);
 }
 
-// process 1 frame
-void Director::processFrame()
-{
-    const auto canRender = _renderer->beginFrame();
-
-    // calculate "global" dt
-    calculateDeltaTime();
-
-    if (_renderView)
-        _renderView->pollEvents();
-
-    // tick before glClear: issue #533
-    if (!_paused)
-    {
-        _eventDispatcher->dispatchEvent(_eventBeforeUpdate);
-        _scheduler->update(_deltaTime);
-        performFrameTasks(_nextUpdateTasks);
-        _eventDispatcher->dispatchEvent(_eventAfterUpdate);
-    }
-
-    if (canRender) [[likely]]
-    {
-        _renderer->clear(ClearFlag::ALL, _clearColor, 1, 0, -10000.0);
-
-        _eventDispatcher->dispatchEvent(_eventBeforeDraw);
-
-        /* to avoid flickr, nextScene MUST be here: after tick and before draw.
-         * FIXME: Which bug is this one. It seems that it can't be reproduced with v0.9
-         */
-        if (_nextScene)
-        {
-            setNextScene();
-        }
-
-        if (_runningScene)
-        {
-            _runningScene->tick(_deltaTime);
-
-            // clear draw stats
-            _renderer->clearDrawStats();
-
-            // render the scene
-            _renderView->renderScene(_renderer, _runningScene);
-
-            _eventDispatcher->dispatchEvent(_eventAfterVisit);
-        }
-
-        // draw the notifications node
-        if (_notificationNode)
-        {
-            auto previousCamera = Camera::_visitingCamera;
-            auto* overlayCamera = getOverlayCamera();
-            if (overlayCamera)
-            {
-                Camera::_visitingCamera = overlayCamera;
-                overlayCamera->apply();
-                _notificationNode->visit(_renderer, Mat4::identity, 0);
-            }
-            Camera::_visitingCamera = previousCamera;
-        }
-
-        updateFrameRate();
-
-        if (_statsDisplay)
-        {
-#if !AX_STRIP_FPS
-            showStats();
-#endif
-        }
-
-#ifdef AX_ENABLE_OPENXR
-        showVRModeIndicator();
-#endif
-
-        _renderer->render();
-
-        _eventDispatcher->dispatchEvent(_eventAfterDraw);
-
-        _totalFrames++;
-
-        // swap buffers
-        if (_renderView)
-        {
-            _renderView->swapBuffers();
-        }
-
-        _renderer->endFrame();
-    }
-
-    if (_statsDisplay)
-    {
-#if !AX_STRIP_FPS
-        calculateMPF();
-#endif
-    }
-
-    _poolManager->getCurrentPool()->clear();
-}
-
 void Director::calculateDeltaTime()
 {
     // new delta time. Re-fixed issue #1277
@@ -410,21 +312,18 @@ void Director::calculateDeltaTime()
             _deltaTime  = std::chrono::duration_cast<std::chrono::microseconds>(now - _lastUpdate).count() / 1000000.0f;
             _lastUpdate = now;
         }
-        _deltaTime = MAX(1e-6f, _deltaTime);
+        _deltaTime = std::clamp(_deltaTime, 1e-6f, _maxDeltaTime);
     }
-
-#if defined(_AX_DEBUG) && _AX_DEBUG
-    // If we are debugging our code, prevent big delta time
-    if (_deltaTime > 0.2f)
-    {
-        _deltaTime = 1 / 60.0f;
-    }
-#endif
 }
 
 float Director::getDeltaTime() const
 {
     return _deltaTime;
+}
+
+void Director::setMaxDeltaTime(float maxDeltaTime)
+{
+    _maxDeltaTime = MAX(maxDeltaTime, 1.0f / 60);
 }
 
 void Director::setRenderView(RenderViewCore* renderView)
@@ -469,6 +368,12 @@ void Director::setCanvasSize(const Vec2& canvasSize)
 
     updateOverlayCamera();
     updateOffscreenCamera();
+
+    if (_runningScene)
+    {
+        if (auto* camera = _runningScene->getDefaultCamera())
+            camera->onCanvasSizeChanged(canvasSize);
+    }
 }
 
 TextureCache* Director::getTextureCache() const
@@ -502,7 +407,7 @@ Camera* Director::getOverlayCamera()
 {
     if (!_overlayCamera)
     {
-        _overlayCamera = Camera::createOrthographicView(_canvasSizeInPoints, -1024.0f, 1024.0f);
+        _overlayCamera = Camera::create(CameraMode::Ortho);
         _overlayCamera->retain();
         _overlayCamera->setCameraFlag(CameraFlag::DEFAULT);
         _overlayCamera->setDepth(127);
@@ -515,7 +420,7 @@ Camera* Director::getOffscreenCamera()
 {
     if (!_offscreenCamera)
     {
-        _offscreenCamera = Camera::createOrthographicView(_canvasSizeInPoints, -1024.0f, 1024.0f);
+        _offscreenCamera = Camera::create(CameraMode::Ortho);
         _offscreenCamera->retain();
         _offscreenCamera->setCameraFlag(CameraFlag::DEFAULT);
         _offscreenCamera->setDepth(0);
@@ -525,10 +430,10 @@ Camera* Director::getOffscreenCamera()
 
 void Director::updateOverlayCamera()
 {
-    if (_canvasSizeInPoints.width <= 0 || _canvasSizeInPoints.height <= 0 || !_offscreenCamera)
+    if (_canvasSizeInPoints.width <= 0 || _canvasSizeInPoints.height <= 0 || !_overlayCamera)
         return;
 
-    _overlayCamera->initOrthographicView(_canvasSizeInPoints, -1024.0f, 1024.0f);
+    _overlayCamera->configureOrthographicView(_canvasSizeInPoints, -1024.0f, 1024.0f);
 }
 
 void Director::updateOffscreenCamera()
@@ -536,7 +441,7 @@ void Director::updateOffscreenCamera()
     if (_canvasSizeInPoints.width <= 0 || _canvasSizeInPoints.height <= 0 || !_offscreenCamera)
         return;
 
-    _offscreenCamera->initOrthographicView(_canvasSizeInPoints, -1024.0f, 1024.0f);
+    _offscreenCamera->configureOrthographicView(_canvasSizeInPoints, -1024.0f, 1024.0f);
 }
 
 void Director::setNextDeltaTimeZero(bool nextDeltaTimeZero)
@@ -582,7 +487,6 @@ static void getViewProjMatrix(Mat4* transformOut)
     auto scene  = director->getRunningScene();
     auto camera = scene ? scene->getDefaultCamera() : nullptr;
 
-    AXASSERT(camera, "Director screen/world conversion requires a running scene default camera");
     *transformOut = camera ? camera->getViewProjectionMatrix() : Mat4::identity;
 }
 
@@ -603,7 +507,23 @@ Vec2 Director::getCanvasSizeInPixels() const
 
 Vec2 Director::screenToCanvas(const Vec2& screenPoint) const
 {
-    return Vec2(screenPoint.x, getCanvasSize().height - screenPoint.y);
+    if (!_renderView)
+        return screenPoint;
+
+    const auto& viewport = _renderView->getViewportRect();
+    const auto& scale    = _renderView->getScale();
+
+    if (scale.x == 0.0f || scale.y == 0.0f)
+        return Vec2::zero;
+
+    // Screen coordinates use a top-left origin, while viewport.origin
+    // is expressed with a bottom-left origin.
+    const float viewportTop = _renderView->getRenderSize().height - (viewport.origin.y + viewport.size.height);
+
+    return Vec2{
+        (screenPoint.x - viewport.origin.x) / scale.x,
+        _canvasSizeInPoints.height - (screenPoint.y - viewportTop) / scale.y,
+    };
 }
 
 Vec2 Director::getVisibleSize() const
@@ -651,7 +571,7 @@ void Director::runWithScene(Scene* scene)
     AXASSERT(_runningScene == nullptr, "_runningScene should be null");
 
     pushScene(scene);
-    startAnimation();
+    activate();
 }
 
 void Director::replaceScene(Scene* scene)
@@ -915,7 +835,7 @@ void Director::reset()
         _scenesStack.popBack();
     }
 
-    stopAnimation();
+    deactivate();
 
     AX_SAFE_RELEASE_NULL(_FPSLabel);
     AX_SAFE_RELEASE_NULL(_drawnBatchesLabel);
@@ -948,7 +868,7 @@ void Director::reset()
     MeshMaterial::releaseCachedMaterial();
 #endif
 
-    rhi::SamplerCache::destroyInstance();
+    rhi::SamplerRegistry::destroyInstance();
 }
 
 void Director::cleanupDirector()
@@ -972,7 +892,7 @@ void Director::cleanupDirector()
     ProgramManager::destroyInstance();
     VertexLayoutManager::destroyInstance();
 
-    rhi::GraphicsCore::destroyCurrentDriver();
+    rhi::GraphicsCore::shutdown();
 
     if (_renderView)
     {
@@ -1001,7 +921,7 @@ void Director::restartDirector()
     _poolManager->getCurrentPool()->clear();
 
     // Restart animation
-    startAnimation();
+    activate();
 
     // Real restart in script level
 #if AX_ENABLE_SCRIPT_BINDING
@@ -1138,11 +1058,9 @@ void Director::showStats()
             _frames  = 0;
         }
 
-        auto previousCamera = Camera::_visitingCamera;
         auto* overlayCamera = getOverlayCamera();
         if (overlayCamera)
         {
-            Camera::_visitingCamera = overlayCamera;
             overlayCamera->apply();
         }
 
@@ -1165,12 +1083,11 @@ void Director::showStats()
         const Mat4& identity = Mat4::identity;
         if (overlayCamera)
         {
-            _drawnVerticesLabel->visit(_renderer, identity, 0);
-            _drawnBatchesLabel->visit(_renderer, identity, 0);
-            _FPSLabel->visit(_renderer, identity, 0);
+            SceneRenderState overlayState(_renderer, overlayCamera);
+            _drawnVerticesLabel->visit(overlayState, identity, 0);
+            _drawnBatchesLabel->visit(overlayState, identity, 0);
+            _FPSLabel->visit(overlayState, identity, 0);
         }
-
-        Camera::_visitingCamera = previousCamera;
     }
 }
 
@@ -1192,15 +1109,13 @@ void Director::showVRModeIndicator()
         _VRModeLabel->enableOutline(Color32::black, 2);
     }
 
-    auto previousCamera = Camera::_visitingCamera;
     auto* overlayCamera = getOverlayCamera();
     if (overlayCamera)
     {
-        Camera::_visitingCamera = overlayCamera;
         overlayCamera->apply();
-        _VRModeLabel->visit(_renderer, Mat4::identity, 0);
+        SceneRenderState overlayState(_renderer, overlayCamera);
+        _VRModeLabel->visit(overlayState, Mat4::identity, 0);
     }
-    Camera::_visitingCamera = previousCamera;
 }
 
 void Director::calculateMPF()
@@ -1442,18 +1357,20 @@ void Director::setEventDispatcher(EventDispatcher* dispatcher)
     }
 }
 
-void Director::startAnimation()
+void Director::activate()
 {
-    startAnimation(SetIntervalReason::BY_ENGINE);
+    activate(SetIntervalReason::BY_ENGINE);
 }
 
-void Director::startAnimation(SetIntervalReason reason)
+void Director::activate(SetIntervalReason reason)
 {
     _lastUpdate = std::chrono::steady_clock::now();
 
-    _invalid = false;
+    _active = true;
 
     _axmol_thread_id = std::this_thread::get_id();
+
+    AX_PROFILER_THREAD_NAME("MainThread");
 
     Application::getInstance()->setAnimationInterval(_animationInterval);
 
@@ -1504,35 +1421,133 @@ void Director::performFrameTasks(FrameTaskQueue& frameTasks)
     }
 }
 
-void Director::stepFrame()
+void Director::renderFrame()
 {
-    if (_cleanupDirectorInNextLoop)
+    if (_renderView)
+        _renderView->pollEvents();
+
+    if (_cleanupDirectorInNextLoop) [[unlikely]]
     {
         _cleanupDirectorInNextLoop = false;
         cleanupDirector();
+        return;
     }
-    else if (_restartDirectorInNextLoop)
+
+    if (_restartDirectorInNextLoop) [[unlikely]]
     {
         _restartDirectorInNextLoop = false;
         restartDirector();
-        _renderView->pollEvents();
+        return;
     }
-    else if (!_invalid)
+
+    if (!_active) [[unlikely]]
+        return;
+
+    AX_PROFILER_ZONE_SCOPED;
+
+    const auto canRender = _renderer->beginFrame();
+
+    // calculate "global" dt
+    calculateDeltaTime();
+
+    // tick before glClear: issue #533
+    if (!_paused)
     {
-        processFrame();
+        _eventDispatcher->dispatchEvent(_eventBeforeUpdate);
+        _scheduler->update(_deltaTime);
+        performFrameTasks(_nextUpdateTasks);
+        _eventDispatcher->dispatchEvent(_eventAfterUpdate);
     }
+
+    if (canRender) [[likely]]
+    {
+        _renderer->clear(ClearFlag::ALL, _clearColor, 1, 0, -10000.0);
+
+        _eventDispatcher->dispatchEvent(_eventBeforeDraw);
+
+        /* to avoid flickr, nextScene MUST be here: after tick and before draw.
+         * FIXME: Which bug is this one. It seems that it can't be reproduced with v0.9
+         */
+        if (_nextScene)
+        {
+            setNextScene();
+        }
+
+        if (_runningScene)
+        {
+            _runningScene->tick(_deltaTime);
+
+            // clear draw stats
+            _renderer->clearDrawStats();
+
+            // render the scene
+            _renderView->renderScene(_renderer, _runningScene);
+
+            _eventDispatcher->dispatchEvent(_eventAfterVisit);
+        }
+
+        // draw the notifications node
+        if (_notificationNode)
+        {
+            auto* overlayCamera = getOverlayCamera();
+            if (overlayCamera)
+            {
+                overlayCamera->apply();
+                SceneRenderState overlayState(_renderer, overlayCamera);
+                _notificationNode->visit(overlayState, Mat4::identity, 0);
+            }
+        }
+
+        updateFrameRate();
+
+        if (_statsDisplay)
+        {
+#if !AX_STRIP_FPS
+            showStats();
+#endif
+        }
+
+#ifdef AX_ENABLE_OPENXR
+        showVRModeIndicator();
+#endif
+
+        _renderer->render();
+
+        _eventDispatcher->dispatchEvent(_eventAfterDraw);
+
+        _totalFrames++;
+
+        // swap buffers
+        if (_renderView)
+        {
+            _renderView->swapBuffers();
+        }
+
+        _renderer->endFrame();
+    }
+
+    if (_statsDisplay)
+    {
+#if !AX_STRIP_FPS
+        calculateMPF();
+#endif
+    }
+
+    _poolManager->getCurrentPool()->clear();
+
+    AX_PROFILER_FRAME_MARK;
 }
 
-void Director::stepFrame(float dt)
+void Director::renderFrame(float dt)
 {
     _deltaTime               = dt;
     _deltaTimePassedByCaller = true;
-    stepFrame();
+    renderFrame();
 }
 
-void Director::stopAnimation()
+void Director::deactivate()
 {
-    _invalid = true;
+    _active = false;
 }
 
 void Director::setAnimationInterval(float interval)
@@ -1543,10 +1558,10 @@ void Director::setAnimationInterval(float interval)
 void Director::setAnimationInterval(float interval, SetIntervalReason reason)
 {
     _animationInterval = interval;
-    if (!_invalid)
+    if (_active)
     {
-        stopAnimation();
-        startAnimation(reason);
+        deactivate();
+        activate(reason);
     }
 }
 

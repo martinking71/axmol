@@ -90,10 +90,10 @@ InputSystem::~InputSystem()
 
 Rect InputSystem::getNodeNativeWindowRect(Node* node) const
 {
-    // 1. Fetch the currently active running camera
-    auto camera = Camera::getVisitingCamera();
+    auto scene  = Director::getInstance()->getRunningScene();
+    auto camera = scene ? scene->getDefaultCamera() : nullptr;
     if (!camera)
-        camera = Camera::getDefaultCamera();
+        return Rect();
 
     // 2. Transform local bounds of the node directly into 3D World Space coordinates
     auto worldLeftBottom = node->convertToWorldSpace(Vec2::zero);
@@ -374,9 +374,9 @@ void InputSystem::dispatchEvent(Event* event, bool immediate)
 
 // Platform-facing unified input handlers ---------------------------------
 
-void InputSystem::handleKeyEvent(KeyboardEvent::KeyCode keyCode, InputPhase phase)
+void InputSystem::handleKeyEvent(KeyboardEvent::KeyCode keyCode, InputPhase phase, uint32_t modifiers)
 {
-    KeyboardEvent event(keyCode, phase);
+    KeyboardEvent event(keyCode, phase, modifiers);
     dispatchEvent(&event);
     bool stopped = event.isStopped();
 
@@ -465,12 +465,13 @@ void InputSystem::handlePointerScroll(Vec2 point, Vec2 scollDelat, const Pointer
 PointerHitResult InputSystem::handleVRPointerScroll(Vec2 point,
                                                     Vec2 scrollDelta,
                                                     const Ray& ray,
-                                                    const PointerInputState& state)
+                                                    const PointerInputState& state,
+                                                    const PointerRayContext* rayContext)
 {
     if (!_interactive)
         return {};
 
-    return dispatchVRPointerScroll(point, scrollDelta, ray, state);
+    return dispatchVRPointerScroll(point, scrollDelta, ray, state, rayContext);
 }
 
 void InputSystem::handleXRInput(const XRInputEvent::State& state)
@@ -599,18 +600,37 @@ void InputSystem::dispatchPointerEvent(InputPhase phase, Vec2 point, const Point
 PointerHitResult InputSystem::handleVRPointerEvent(InputPhase phase,
                                                    Vec2 point,
                                                    const Ray& ray,
-                                                   const PointerInputState& state)
+                                                   const PointerInputState& state,
+                                                   const PointerRayContext* rayContext)
 {
     if (!_interactive)
         return {};
 
-    return dispatchVRPointerEvent(phase, point, ray, state);
+    return dispatchVRPointerEvent(phase, point, ray, state, rayContext);
+}
+
+PointerHitResult InputSystem::hitTestVRPointer(Vec2 point,
+                                               const Ray& ray,
+                                               const PointerInputState& state,
+                                               const PointerRayContext* rayContext)
+{
+    if (!_interactive)
+        return {};
+
+    // Reticle refresh needs a pure "currently under the ray" hit-test.
+    // PointerMove hit-tests may intentionally return the previous hovered widget
+    // to emit hover-exit events, and that path can report no fresh hit point.
+    _isolatedMoveEvent.setPointerInfo(InputPhase::PointerScroll, nativeToScreen(point), state);
+    _isolatedMoveEvent.setRay(ray);
+    _isolatedMoveEvent.setRayContext(rayContext);
+    return _eventDispatcher->hitTestPointerEvent(&_isolatedMoveEvent);
 }
 
 PointerHitResult InputSystem::dispatchVRPointerEvent(InputPhase phase,
                                                      Vec2 point,
                                                      const Ray& ray,
-                                                     const PointerInputState& state)
+                                                     const PointerInputState& state,
+                                                     const PointerRayContext* rayContext)
 {
     _lastPointerPosition = point;
 
@@ -641,6 +661,7 @@ PointerHitResult InputSystem::dispatchVRPointerEvent(InputPhase phase,
 
     event->setPointerInfo(phase, nativeToScreen(point), state);
     event->setRay(ray);
+    event->setRayContext(rayContext);
     dispatchEvent(event);
 
     auto result = event->getHitResult();
@@ -660,13 +681,15 @@ PointerHitResult InputSystem::dispatchVRPointerEvent(InputPhase phase,
 PointerHitResult InputSystem::dispatchVRPointerScroll(Vec2 point,
                                                       Vec2 scrollDelta,
                                                       const Ray& ray,
-                                                      const PointerInputState& state)
+                                                      const PointerInputState& state,
+                                                      const PointerRayContext* rayContext)
 {
     _lastPointerPosition = point;
 
     _scrollEvent.setPointerInfo(InputPhase::PointerScroll, nativeToScreen(point), state);
     _scrollEvent.setScrollData(scrollDelta);
     _scrollEvent.setRay(ray);
+    _scrollEvent.setRayContext(rayContext);
     dispatchEvent(&_scrollEvent);
 
     return _scrollEvent.getHitResult();
@@ -717,7 +740,10 @@ void InputSystem::onPlatformKeyboardWillShow(float rawX, float rawY, float rawWi
         keyboardPos  = nativeToScreen(keyboardPos);
 
         // Transform the relative screen size vector into World Space dimensions
-        auto camera          = Camera::getDefaultCamera();
+        auto scene  = director->getRunningScene();
+        auto camera = scene ? scene->getDefaultCamera() : nullptr;
+        if (!camera)
+            return ax::Rect();
         Vec3 nearWorldSize   = camera->deprojectScreenToWorld(Vec3(keyboardSize.x, keyboardSize.y, 0.0f));
         Vec3 nearWorldOrigin = camera->deprojectScreenToWorld(Vec3(0.0f, 0.0f, 0.0f));
         float worldW         = std::abs(nearWorldSize.x - nearWorldOrigin.x);

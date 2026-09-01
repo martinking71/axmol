@@ -779,12 +779,12 @@ std::string EditBox::getDescription() const
     return "EditBox";
 }
 
-void EditBox::draw(Renderer* renderer, const Mat4& parentTransform, uint32_t parentFlags)
+void EditBox::draw(const SceneRenderState& state, const Mat4& parentTransform, uint32_t parentFlags)
 {
-    Widget::draw(renderer, parentTransform, parentFlags);
+    Widget::draw(state, parentTransform, parentFlags);
     if (_editBoxImpl)
     {
-        _editBoxImpl->draw(renderer, parentTransform, parentFlags & FLAGS_TRANSFORM_DIRTY);
+        _editBoxImpl->draw(state, parentTransform, parentFlags & FLAGS_TRANSFORM_DIRTY);
     }
 }
 
@@ -876,6 +876,11 @@ void EditBox::setGlobalZOrder(float globalZOrder)
     {
         _editBoxImpl->setGlobalZOrder(globalZOrder);
     }
+}
+
+bool EditBox::isEditing() const
+{
+    return _editBoxImpl && _editBoxImpl->isEditing();
 }
 
 #if AX_ENABLE_SCRIPT_BINDING

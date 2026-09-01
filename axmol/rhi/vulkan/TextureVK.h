@@ -38,7 +38,7 @@ namespace ax::rhi::vk
  * @{
  */
 
-class DriverImpl;
+class GraphicsDeviceImpl;
 class RenderTargetImpl;
 class TextureImpl;
 
@@ -56,7 +56,7 @@ struct TextureHandle
     explicit operator bool() const { return image != VK_NULL_HANDLE; }
 
 private:
-    void destroy(DriverImpl* driver, uint64_t fenceValue);
+    void destroy(GraphicsDeviceImpl* driver, uint64_t fenceValue);
 
     TextureHandle detach()
     {
@@ -115,7 +115,7 @@ public:
     /**
      * @param desc Specifies the texture description.
      */
-    TextureImpl(DriverImpl*, const TextureDesc& desc);
+    TextureImpl(GraphicsDeviceImpl*, const TextureDesc& desc);
     ~TextureImpl();
 
     // only operate level=0, layer=0
@@ -151,6 +151,7 @@ public:
     const TextureHandle& internalHandle() const { return _nativeTexture; }
     VkSampler getSampler() const { return _sampler; }
     const TextureDesc& getDesc() const { return _desc; }
+    VkImageUsageFlags getUsageFlags() const { return _vkUsageFlags; }
 
     void setLastFenceValue(uint64_t fenceValue) { _lastFenceValue = fenceValue; }
 
@@ -164,8 +165,8 @@ public:
     /**
      * Wraps an existing VkImage (e.g. from OpenXR swapchain).
      */
-    TextureImpl(DriverImpl*, VkImage existingImage, VkImageView existingImageView, VkImageUsageFlags usage);
-    TextureImpl(DriverImpl*,
+    TextureImpl(GraphicsDeviceImpl*, VkImage existingImage, VkImageView existingImageView, VkImageUsageFlags usage);
+    TextureImpl(GraphicsDeviceImpl*,
                 VkImage existingImage,
                 VkImageView existingImageView,
                 VkImageUsageFlags usage,
@@ -177,7 +178,7 @@ protected:
     void ensureNativeTexture();
     void generateMipmaps(VkCommandBuffer cmd);
 
-    DriverImpl* _driver{nullptr};  // weak pointer
+    GraphicsDeviceImpl* _driver{nullptr};  // weak pointer
     ImageLayoutTracker _layoutTracker;
     TextureHandle _nativeTexture{};
     VkSampler _sampler{VK_NULL_HANDLE};

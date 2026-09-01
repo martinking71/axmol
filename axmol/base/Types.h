@@ -299,12 +299,11 @@ enum class RenderScaleMode
 
 enum class CameraMode
 {
+    None,
     Ortho,        ///< Pure orthographic projection, camera at (w/2, h/2, 0) looking -Z
     Perspective,  ///< Pure perspective projection, user positions camera; default at (0, 1.5, 5) looking at origin
     Classic,      ///< Calibrated perspective at (w/2, h/2, zEye) looking at center; z=0 has no distortion
 };
-
-using DriverPreference = rhi::DriverType;
 
 /**
  * @struct ContextAttrs
@@ -333,7 +332,6 @@ struct ContextAttrs
     bool vsync{true};                             ///< Enable vertical sync.
     bool debugLayerEnabled{false};                ///< Enable graphics API debug layer.
     uint32_t uploadBufferSize{16 * 1024 * 1024};  ///< Upload buffer size (used by D3D12 RHI).
-    bool shaderControlledSampler{false};          ///< Whether samplers are fully controlled by shaders (D3D12 style).
 
     // Window attributes
     bool visible{true};           ///< Whether the window is visible at creation.
@@ -370,6 +368,7 @@ using PixelFormat  = rhi::PixelFormat;
 using TargetBufferFlags = rhi::TargetBufferFlags;
 using DepthStencilFlags = rhi::DepthStencilFlags;
 using ClearFlag         = rhi::ClearFlag;
+using VertexSemantic    = rhi::VertexSemantic;
 
 template <typename _Ty>
 using LinearStack = std::stack<_Ty, std::vector<_Ty>>;

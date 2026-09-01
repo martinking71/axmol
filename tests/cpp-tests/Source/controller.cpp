@@ -47,7 +47,7 @@ public:
     {
 #if defined(AX_ENABLE_EXT_EFFEKSEER)
 #    pragma message("The optional extension Effekseer is enabled.")
-        addTest("Effekseer", []() { return new EffekseerTests(); });
+        addTest("Particles(Effekseer)", []() { return new EffekseerTests(); });
 #endif
         addTest("Scene3D", []() { return new Scene3DTests(); });
 #if AX_ENABLE_EXT_IMGUI
@@ -100,7 +100,7 @@ public:
         addTest("Node", []() { return new NodeTests(); });
         addTest("Parallax", []() { return new ParallaxTests(); });
         addTest("Particles2D", []() { return new ParticleTests(); });
-        addTest("Particle3D", []() { return new Particle3DTests(); });
+        addTest("Particles(PU)", []() { return new Particle3DTests(); });
 #if defined(AX_ENABLE_PHYSICS_2D)
         addTest("Physics2D", []() { return new PhysicsTests(); });
 #endif
@@ -111,6 +111,9 @@ public:
         addTest("Scene", []() { return new SceneTests(); });
         addTest("Spine", []() { return new SpineTests(); });
         addTest("Sprite", []() { return new SpriteTests(); });
+#ifdef AX_ENABLE_EXT_SVG
+        addTest("Sprite - from SVG", []() { return new SVGTests(); });
+#endif
         addTest("MeshRenderer", []() { return new MeshRendererTests(); });
         addTest("SpritePolygon", []() { return new SpritePolygonTest(); });
         addTest("Terrain", []() { return new TerrainTests(); });
@@ -134,8 +137,6 @@ public:
 #if (AX_TARGET_PLATFORM == AX_PLATFORM_IOS || AX_TARGET_PLATFORM == AX_PLATFORM_ANDROID)
         addTest("Vibrate", []() { return new VibrateTests(); });
 #endif
-        //       addTest("Zwoptex Deprecrated, will be removed in release axmol-2.2.0 (see #1602)", []() { return new
-        //       ZwoptexTests(); });
         addTest("SpriteFrameCache", []() { return new SpriteFrameCacheTests(); });  // TODO
 #if (AX_TARGET_PLATFORM == AX_PLATFORM_MAC || AX_TARGET_PLATFORM == AX_PLATFORM_WIN32 || \
      AX_TARGET_PLATFORM == AX_PLATFORM_LINUX)

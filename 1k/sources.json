@@ -31,6 +31,9 @@
     "openxr": {
       "sources": { "origin": "https://github.com/KhronosGroup/OpenXR-SDK.git" }
     },
+    "lunasvg": {
+      "sources": { "origin": "https://github.com/sammycage/lunasvg.git" }
+    },
     "sample-assets": {
       "sources": {
         "origin": "https://github.com/axmolengine/axmol-sample-assets.git",
@@ -40,6 +43,9 @@
     },
     "live2d-core": {
       "sources": { "origin": "https://github.com/axmolengine/live2d-axmol/releases/download/prebuilt/live2d-core-${ver}.zip" }
+    },
+	"tracy": {
+      "sources": { "origin": "https://github.com/wolfpld/tracy.git" }
     }
   },
   "devtools": {

@@ -252,6 +252,8 @@ function(ax_sync_target_dlls ax_target)
   if(opt_LUA AND NOT AX_USE_LUAJIT)
     if(NOT CMAKE_GENERATOR MATCHES "Ninja")
       set(BUILD_CONFIG_DIR "\$\(Configuration\)/")
+    else()
+      set(BUILD_CONFIG_DIR "$<CONFIG>/")
     endif()
 
     if(MSVC)
@@ -599,7 +601,7 @@ function(ax_setup_app_config app_name)
 
   # auto looking app shaders source dir and add to axslcc compile-list
   get_target_property(_APP_SOURCE_DIR ${app_name} SOURCE_DIR)
-  set(app_shaders_dir "${_APP_SOURCE_DIR}/Source/shaders")
+  set(app_shaders_dir "${_APP_SOURCE_DIR}/Source/Shaders")
 
   ax_find_shaders(${app_shaders_dir} app_shaders RECURSE)
 
@@ -609,7 +611,7 @@ function(ax_setup_app_config app_name)
 
     # add non-builtin shader build target, will output to: ${CMAKE_BINARY_DIR}/runtime/axslc/custom/
     ax_add_shader_target_for(${app_name} FILES ${app_shaders})
-    source_group("Source Files/Source/shaders" FILES ${app_shaders})
+    source_group("Source Files/Source/Shaders" FILES ${app_shaders})
   endif()
 
   if(IS_DIRECTORY ${AXSLCC_OUT_DIR})
@@ -937,6 +939,18 @@ macro(ax_config_pred1 target_name pred)
   endif()
 endmacro()
 
+# The axmol profiler backend config helper macro.
+# Unlike ax_config_pred/ax_config_pred1 (boolean on/off), AX_PROFILER_BACKEND
+# is a string enum (NONE|TRACY), so it needs its own dedicated macro rather
+# than reusing ax_config_pred.
+macro(ax_apply_profiler_backend target_name scope)
+  if(AX_PROFILER_BACKEND STREQUAL "TRACY")
+    target_compile_definitions(${target_name} ${scope} AX_PROFILER_BACKEND_TRACY)
+  elseif(NOT AX_PROFILER_BACKEND STREQUAL "NONE")
+    message(FATAL_ERROR "Unknown AX_PROFILER_BACKEND: ${AX_PROFILER_BACKEND}")
+  endif()
+endmacro()
+
 macro(source_group_by_dir proj_dir source_files)
   if(MSVC OR APPLE)
     get_filename_component(sgbd_cur_dir ${proj_dir} ABSOLUTE)
@@ -969,6 +983,11 @@ function(ax_collect_sdk_targets dir out_list)
 
   # Filter targets
   foreach(tg IN LISTS local_targets)
+    get_target_property(skip_export ${tg} AX_SKIP_SDK_EXPORT)
+    if(skip_export)
+      continue()
+    endif()
+
     # Check target type (Static, Shared, Interface, Utility, etc.)
     get_target_property(tg_type ${tg} TYPE)
 
@@ -993,4 +1012,22 @@ function(ax_collect_sdk_targets dir out_list)
 
   # Pass the filtered list back to the parent scope
   set(${out_list} ${temp_list} PARENT_SCOPE)
+endfunction()
+
+function(ax_configure_target_output tgt tgt_type folder_name)
+  if(NOT(tgt_type STREQUAL "INTERFACE_LIBRARY"))
+    set_target_properties(${tgt} PROPERTIES
+      ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib" # Windows/Linux/macOS, .a, .lib
+      RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin" # Windows .dll, .exe
+      FOLDER "${folder_name}"
+    )
+
+    get_target_property(_apple_framework ${tgt} MACOSX_FRAMEWORK_NAME)
+
+    if(NOT _apple_framework)
+      set_target_properties(${tgt} PROPERTIES
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib" # .so, .dylib, windows imported .lib
+      )
+    endif()
+  endif()
 endfunction()

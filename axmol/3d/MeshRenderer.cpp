@@ -812,7 +812,7 @@ void MeshRenderer::removeAllAttachNode()
     _attachments.clear();
 }
 
-void MeshRenderer::visit(ax::Renderer* renderer, const ax::Mat4& parentTransform, uint32_t parentFlags)
+void MeshRenderer::visit(const ax::SceneRenderState& state, const ax::Mat4& parentTransform, uint32_t parentFlags)
 {
     // quick return if not visible. children won't be drawn.
     if (!_visible)
@@ -820,10 +820,10 @@ void MeshRenderer::visit(ax::Renderer* renderer, const ax::Mat4& parentTransform
         return;
     }
 
-    uint32_t flags = processParentFlags(parentTransform, parentFlags);
+    uint32_t flags = processParentFlags(state, parentTransform, parentFlags);
     flags |= FLAGS_RENDER_AS_3D;
 
-    bool visibleByCamera = isVisitableByVisitingCamera();
+    bool visibleByCamera = isVisitableByCamera(state.cameraFlag);
 
     int i = 0;
 
@@ -836,30 +836,30 @@ void MeshRenderer::visit(ax::Renderer* renderer, const ax::Mat4& parentTransform
             auto node = _children.at(i);
 
             if (node && node->getLocalZOrder() < 0)
-                node->visit(renderer, _modelViewTransform, flags);
+                node->visit(state, _modelViewTransform, flags);
             else
                 break;
         }
         // self draw
         if (visibleByCamera)
-            this->draw(renderer, _modelViewTransform, flags);
+            this->draw(state, _modelViewTransform, flags);
 
         for (auto it = _children.cbegin() + i, itCend = _children.cend(); it != itCend; ++it)
-            (*it)->visit(renderer, _modelViewTransform, flags);
+            (*it)->visit(state, _modelViewTransform, flags);
     }
     else if (visibleByCamera)
     {
-        this->draw(renderer, _modelViewTransform, flags);
+        this->draw(state, _modelViewTransform, flags);
     }
 }
 
-void MeshRenderer::draw(Renderer* renderer, const Mat4& transform, uint32_t flags)
+void MeshRenderer::draw(const SceneRenderState& state, const Mat4& transform, uint32_t flags)
 {
 #if AX_USE_CULLING
-    // TODO new-renderer: interface isVisibleInFrustum removal
+    // TODO new-state: interface isVisibleInFrustum removal
     //  camera clipping
-    // if(_children.empty() && Camera::getVisitingCamera() &&
-    // !Camera::getVisitingCamera()->isVisibleInFrustum(&getAABB()))
+    // if(_children.empty() && state.getCamera() &&
+    // !state.getCamera()->isVisibleInFrustum(&getAABB()))
     //     return;
 #endif
 
@@ -891,7 +891,7 @@ void MeshRenderer::draw(Renderer* renderer, const Mat4& transform, uint32_t flag
 
     for (auto&& mesh : _meshes)
     {
-        mesh->draw(renderer, _globalZOrder, transform, flags, _lightMask, Vec4(color.r, color.g, color.b, color.a),
+        mesh->draw(state, _globalZOrder, transform, flags, _lightMask, Vec4(color.r, color.g, color.b, color.a),
                    _forceDepthWrite, _wireframe);
     }
 }
@@ -1029,12 +1029,12 @@ Mesh* MeshRenderer::getMesh() const
 
 static MeshMaterial* getMeshRendererMaterialForAttribs(MeshVertexData* meshVertexData, bool usesLight)
 {
-    bool textured = meshVertexData->hasVertexAttrib(shaderinfos::VertexKey::VERTEX_ATTRIB_TEX_COORD);
-    bool hasSkin  = meshVertexData->hasVertexAttrib(shaderinfos::VertexKey::VERTEX_ATTRIB_BLEND_INDEX) &&
-                   meshVertexData->hasVertexAttrib(shaderinfos::VertexKey::VERTEX_ATTRIB_BLEND_WEIGHT);
-    bool hasNormal       = meshVertexData->hasVertexAttrib(shaderinfos::VertexKey::VERTEX_ATTRIB_NORMAL);
-    bool hasTangentSpace = meshVertexData->hasVertexAttrib(shaderinfos::VertexKey::VERTEX_ATTRIB_TANGENT) &&
-                           meshVertexData->hasVertexAttrib(shaderinfos::VertexKey::VERTEX_ATTRIB_BINORMAL);
+    bool textured = meshVertexData->hasVertexAttrib(MeshVertexAttribute::TEXCOORD0);
+    bool hasSkin  = meshVertexData->hasVertexAttrib(MeshVertexAttribute::BLENDINDICES) &&
+                   meshVertexData->hasVertexAttrib(MeshVertexAttribute::BLENDWEIGHT);
+    bool hasNormal       = meshVertexData->hasVertexAttrib(MeshVertexAttribute::NORMAL);
+    bool hasTangentSpace = meshVertexData->hasVertexAttrib(MeshVertexAttribute::TANGENT) &&
+                           meshVertexData->hasVertexAttrib(MeshVertexAttribute::BINORMAL);
     MeshMaterial::MaterialType type;
     if (textured)
     {

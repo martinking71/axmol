@@ -6,7 +6,7 @@
 
 ## astcenc
 - [![Upstream](https://img.shields.io/github/v/release/ARM-software/astc-encoder?label=Upstream)](https://github.com/ARM-software/astc-encoder)
-- Version: 5.6.0
+- Version: 5.7.0
 - License: Apache-2.0
 
 ## Box2D
@@ -16,7 +16,7 @@
 
 ## c-ares
 - [![Upstream](https://img.shields.io/github/v/release/c-ares/c-ares?label=Upstream)](https://github.com/c-ares/c-ares)
-- Version: 1.34.6
+- Version: 1.34.8
 - License: MIT
 
 ## Clipper2
@@ -36,12 +36,12 @@
 
 ## curl
 - [![Upstream](https://img.shields.io/github/v/release/curl/curl?label=Upstream)](https://github.com/curl/curl)
-- Version: 8.20.0
+- Version: 8.21.0
 - License: Curl (MIT/X)
 
 ## doctest
 - [![Upstream](https://img.shields.io/github/v/release/doctest/doctest?label=Upstream)](https://github.com/doctest/doctest)
-- Version: 2.4.12
+- Version: 2.5.3
 - License: MIT
 
 ## FastLZ
@@ -81,12 +81,12 @@
 
 ## glfw
 - [![Upstream](https://img.shields.io/github/v/release/glfw/glfw?label=Upstream)](https://github.com/glfw/glfw)
-- Version: 3.5-12d2696 of https://github.com/axmolengine/glfw
+- Version: 3.5.1 , with modifications to improve IME support, see: https://github.com/axmolengine/glfw
 - License: zlib
 
 ## ghc (iOS < 13 ONLY)
 - [![Upstream](https://img.shields.io/github/v/release/gulrak/filesystem?label=Upstream)](https://github.com/gulrak/filesystem)
-- Version: 1.5.14
+- Version: 1.5.16
 - License: MIT
 
 ## jni.hpps
@@ -96,12 +96,12 @@
 
 ## JoltPhysics
 - [![Upstream](https://img.shields.io/github/v/release/jrouwe/JoltPhysics?label=Upstream)](https://github.com/jrouwe/JoltPhysics)
-- Version: v5.5.0
+- Version: v5.6.0 with modified CMake scripts for cross-platform compatibility
 - License: MIT
 
 ## jpeg-turbo
 - [![Upstream](https://img.shields.io/github/v/release/libjpeg-turbo/libjpeg-turbo?label=Upstream)](https://github.com/libjpeg-turbo/libjpeg-turbo)
-- Version: 3.1.4.1
+- Version: 3.2.0
 - License: BSD-style (IJG,BSD-3-Clause,zlib)
 
 ## kcp
@@ -111,13 +111,13 @@
 
 ## llhttp
 - [![Upstream](https://img.shields.io/github/v/release/nodejs/llhttp?label=Upstream)](https://github.com/nodejs/llhttp)
-- Version: 9.4.2
+- Version: 9.4.3
 - License: MIT
 
 ## lua
 - plainlua
   - [![Upstream](https://img.shields.io/github/v/release/lua/lua?label=Upstream)](https://github.com/lua/lua) http://www.lua.org/
-  - Version: 5.5.0
+  - Version: 5.5.1 with Axmol-specific API extensions (`lspec.h` / `lspec.cpp`)
   - License: MIT (http://www.lua.org/license.html)
   
 - sol2
@@ -127,7 +127,7 @@
 
 - luajit
   - Upstream: https://github.com/LuaJIT/LuaJIT
-  - Version: 2.1-b925b3e
+  - Version: 2.1-acb2234
   - License: MIT
 
 - tolua
@@ -183,7 +183,7 @@
 
 ## OpenXR-SDK
 - [![Upstream](https://img.shields.io/github/v/release/KhronosGroup/OpenXR-SDK?label=Upstream)](https://github.com/KhronosGroup/OpenXR-SDK)
-- Version: 1.1.60
+- Version: 1.1.62
 - License: Apache-2.0
 
 ## OpenAL Soft
@@ -203,6 +203,11 @@
 - [![Upstream](https://img.shields.io/github/v/release/openssl/openssl?label=Upstream)](https://github.com/openssl/openssl)
 - Version: 3.0.21
 - License: Apache-2.0
+
+## lunasvg
+- [![Upstream](https://img.shields.io/github/v/tag/sammycage/lunasvg?label=Upstream)](https://github.com/sammycage/lunasvg)
+- Version: managed by `1k/build.profiles` and fetched only when `AX_ENABLE_EXT_SVG=ON`
+- License: MIT
 
 ## png
 - [![Upstream](https://img.shields.io/github/v/tag/glennrp/libpng?label=Upstream)](https://github.com/glennrp/libpng)
@@ -241,13 +246,18 @@
 
 ## simdjson
 - [![Upstream](https://img.shields.io/github/v/tag/simdjson/simdjson?label=Upstream)](https://github.com/simdjson/simdjson)
-- Version: 4.6.4
+- Version: 4.6.6
 - License: Apache-2.0
 
 ## stb (stb_image)
 - Upstream: https://github.com/nothings/stb
 - Version: 2.30
 - License: MIT
+
+## tracy
+- [![Upstream](https://img.shields.io/github/v/release/wolfpld/tracy?label=Upstream)](https://github.com/wolfpld/tracy)
+- Version: 0.13.1
+- License: BSD-3-Clause
 
 ## unzip (minizip-1.2)
 - Upstream: https://github.com/simdsoft/mz12
@@ -271,11 +281,10 @@
 
 ## yasio
 - [![Upstream](https://img.shields.io/github/v/release/yasio/yasio?label=Upstream)](https://github.com/yasio/yasio)
-- Version: 4.4.0
+- Version: 4.4.1
 - License: MIT WITH Anti-996
 
 ## zlib
 - [![Upstream](https://img.shields.io/github/v/tag/madler/zlib?label=Upstream)](https://github.com/madler/zlib)
 - Version: 1.3.2
 - License: zlib
-

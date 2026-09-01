@@ -72,9 +72,9 @@ private:
 NewRendererTests::NewRendererTests()
 {
     auto programManager = ProgramManager::getInstance();
-    s_blur_program_id   = programManager->registerCustomProgram(positionTextureColor_vert, "custom/example_Blur_fs"sv,
+    s_blur_program_id   = programManager->registerCustomProgram(positionTextureColor_vs, "custom/example_Blur_fs"sv,
                                                                 VertexLayoutKind::Sprite);
-    s_sepia_program_id  = programManager->registerCustomProgram(positionTextureColor_vert, "custom/example_Sepia_fs"sv,
+    s_sepia_program_id  = programManager->registerCustomProgram(positionTextureColor_vs, "custom/example_Sepia_fs"sv,
                                                                 VertexLayoutKind::Sprite);
 
     ADD_TEST_CASE(CaptureNodeTest);
@@ -195,7 +195,7 @@ class SpriteInGroupCommand : public Sprite
 public:
     static SpriteInGroupCommand* create(std::string_view filename);
 
-    virtual void draw(Renderer* renderer, const Mat4& transform, uint32_t flags) override;
+    virtual void draw(const SceneRenderState& state, const Mat4& transform, uint32_t flags) override;
 };
 
 SpriteInGroupCommand* SpriteInGroupCommand::create(std::string_view filename)
@@ -206,15 +206,15 @@ SpriteInGroupCommand* SpriteInGroupCommand::create(std::string_view filename)
     return sprite;
 }
 
-void SpriteInGroupCommand::draw(Renderer* renderer, const Mat4& transform, uint32_t flags)
+void SpriteInGroupCommand::draw(const SceneRenderState& state, const Mat4& transform, uint32_t flags)
 {
-    AXASSERT(renderer, "Render is null");
-    auto* spriteWrapperCommand = renderer->getNextGroupCommand();
+    AXASSERT(state.getRenderer(), "Renderer is null");
+    auto* spriteWrapperCommand = state.getRenderer()->getNextGroupCommand();
     spriteWrapperCommand->init(_globalZOrder);
-    renderer->addCommand(spriteWrapperCommand);
-    renderer->pushGroup(spriteWrapperCommand->getRenderQueueID());
-    Sprite::draw(renderer, transform, flags);
-    renderer->popGroup();
+    state.getRenderer()->addCommand(spriteWrapperCommand);
+    state.getRenderer()->pushGroup(spriteWrapperCommand->getRenderQueueID());
+    Sprite::draw(state, transform, flags);
+    state.getRenderer()->popGroup();
 }
 
 GroupCommandTest::GroupCommandTest()

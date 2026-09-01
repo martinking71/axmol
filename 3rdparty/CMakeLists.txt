@@ -6,6 +6,7 @@ option(AX_WITH_WEBP "Build with internal webp support" ON)
 option(AX_WITH_CLIPPER2 "Build with internal Clipper2 support" ON)
 option(AX_WITH_POLY2TRI "Build with internal poly2tri support" ON)
 option(AX_WITH_FASTLZ "Build with internal fastlz support" ON)
+option(AX_WITH_TRACY "Build with internal Tracy support" ON)
 
 option(AX_WITH_CURL "Build with internal curl support" ON)
 option(AX_WITH_UNZIP "Build with internal unzip support" ON)
@@ -110,21 +111,7 @@ function(ax_add_3rd source_dir)
       add_dependencies(3rdparty ${tgt})
     endif()
 
-    if(NOT (tgt_type STREQUAL "INTERFACE_LIBRARY"))
-      set_target_properties(${tgt} PROPERTIES
-        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib" # Windows/Linux/macOS, .a, .lib
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin" # Windows .dll, .exe
-        FOLDER "3rdparty"
-      )
-
-      get_target_property(_apple_framework ${tgt} MACOSX_FRAMEWORK_NAME)
-      if(NOT _apple_framework)
-        set_target_properties(${tgt} PROPERTIES
-          LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib" # .so, .dylib, windows imported .lib
-        )
-      endif()
-    endif()
-
+    ax_configure_target_output(${tgt} ${tgt_type} "3rdparty")
   endforeach()
 endfunction()
 
@@ -139,7 +126,7 @@ if(ANDROID)
   )
 endif()
 
-ax_add_3rd(fmt)
+ax_add_3rd(fmt OPTIONS "FMT_MODULE OFF")
 if (TARGET fmt-c)
   set_target_properties(fmt-c PROPERTIES FOLDER "3rdparty")
 endif()
@@ -421,6 +408,34 @@ if(WIN32 AND AX_GLES_PROFILE)
     ax_add_3rd(angle TARGETS angle::GLESv2;angle::EGL)
   else()
     add_subdirectory(angle)
+  endif()
+endif()
+
+# tracy
+if(AX_PROFILER_BACKEND STREQUAL "TRACY")
+  set(AX_WITH_TRACY ON CACHE BOOL "" FORCE)
+else()
+  set(AX_WITH_TRACY OFF CACHE BOOL "" FORCE)
+endif()
+
+if(AX_WITH_TRACY)
+  _1kfetch(tracy)
+  set(TRACY_ENABLE ON CACHE BOOL "" FORCE)
+  set(TRACY_ON_DEMAND ON CACHE BOOL "" FORCE)
+  ax_add_3rd(${tracy_SOURCE_DIR} TARGETS TracyClient)
+endif()
+
+# SVG
+if(AX_ENABLE_EXT_SVG)
+  _1kfetch(lunasvg)
+  ax_add_3rd(${lunasvg_SOURCE_DIR}
+    TARGETS lunasvg
+    OPTIONS
+      "USE_SYSTEM_PLUTOVG OFF"
+      "LUNASVG_BUILD_EXAMPLES OFF"
+  )
+  if(TARGET plutovg)
+    set_property(TARGET plutovg PROPERTY AX_SKIP_SDK_EXPORT ON)
   endif()
 endif()
 

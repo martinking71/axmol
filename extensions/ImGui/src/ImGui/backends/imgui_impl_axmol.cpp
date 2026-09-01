@@ -368,7 +368,7 @@ IMGUI_IMPL_API void ImGui_ImplAxmol_RenderDrawData(ImDrawData* draw_data)
     ImVec2 clip_scale = draw_data->FramebufferScale;  // (1,1) unless using retina display which are often (2,2)
 
     // Render command lists
-    for (int n = 0; n < draw_data->CmdListsCount; n++)
+    for (int n = 0; n < draw_data->CmdLists.size(); n++)
     {
         const ImDrawList* cmd_list = draw_data->CmdLists[n];
 
@@ -450,8 +450,12 @@ IMGUI_IMPL_API void ImGui_ImplAxmol_RenderDrawData(ImDrawData* draw_data)
                         const auto tr = node->getNodeToParentTransform();
                         node->setVisible(true);
                         node->setNodeToParentTransform(tr);
-                        const auto& proj = Camera::getDefaultCamera()->getViewProjectionMatrix();
-                        node->visit(Director::getInstance()->getRenderer(), proj.getInversed() * bd->Projection, 0);
+                        auto director = Director::getInstance();
+                        auto scene    = director->getRunningScene();
+                        auto camera   = scene ? scene->getDefaultCamera() : nullptr;
+                        const auto& proj = camera ? camera->getViewProjectionMatrix() : Mat4::identity;
+                        SceneRenderState renderState(director->getRenderer(), camera);
+                        node->visit(renderState, proj.getInversed() * bd->Projection, 0);
                         node->setVisible(false);
                     }
                 }
@@ -550,7 +554,7 @@ IMGUI_IMPL_API bool ImGui_ImplAxmol_CreateDeviceObjects()
 
     auto pm = ProgramManager::getInstance();
 
-    bd->ProgramInfo.program = pm->loadProgram("custom/imgui_sprite_vs"sv, ax::positionTextureColor_frag);
+    bd->ProgramInfo.program = pm->loadProgram("custom/imgui_sprite_vs"sv, ax::positionTextureColor_fs);
 
     IM_ASSERT(bd->ProgramInfo.program);
 
@@ -560,9 +564,9 @@ IMGUI_IMPL_API bool ImGui_ImplAxmol_CreateDeviceObjects()
     auto& info      = bd->ProgramInfo;
     info.texture    = info.program->getUniformLocation(TEXTURE);
     info.projection = info.program->getUniformLocation(MVP_MATRIX);
-    info.position   = info.program->getVertexInputDesc(POSITION);
-    info.uv         = info.program->getVertexInputDesc(TEXCOORD);
-    info.color      = info.program->getVertexInputDesc(COLOR);
+    info.position   = info.program->getVertexInputDesc(VertexSemantic::POSITION);
+    info.uv         = info.program->getVertexInputDesc(VertexSemantic::TEXCOORD0);
+    info.color      = info.program->getVertexInputDesc(VertexSemantic::COLOR0);
     IM_ASSERT(bool(info.texture));
     IM_ASSERT(bool(info.projection));
     IM_ASSERT(!!info.position);
@@ -572,9 +576,9 @@ IMGUI_IMPL_API bool ImGui_ImplAxmol_CreateDeviceObjects()
 
     auto layoutDesc = axvlm->allocateVertexLayoutDesc();
     layoutDesc.startLayout(3);
-    layoutDesc.addAttrib("a_position", info.position, VertexElementType::FLOAT2, 0, false);
-    layoutDesc.addAttrib("a_texCoord", info.uv, VertexElementType::FLOAT2, offsetof(ImDrawVert, uv), false);
-    layoutDesc.addAttrib("a_color", info.color, VertexElementType::UBYTE4, offsetof(ImDrawVert, col), true);
+    layoutDesc.addAttrib(info.position, VertexElementType::FLOAT2, 0, false);
+    layoutDesc.addAttrib(info.uv, VertexElementType::FLOAT2, offsetof(ImDrawVert, uv), false);
+    layoutDesc.addAttrib(info.color, VertexElementType::UBYTE4, offsetof(ImDrawVert, col), true);
     layoutDesc.endLayout();
 
     Object::assign(info.layout, axvlm->getVertexLayout(std::forward<VertexLayoutDesc>(layoutDesc)));

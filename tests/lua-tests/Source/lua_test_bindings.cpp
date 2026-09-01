@@ -78,7 +78,7 @@ public:
     void setBlendFunc(const BlendFunc& blendFunc);
 
     // Overrides
-    virtual void draw(Renderer* renderer, const Mat4& transform, uint32_t flags) override;
+    virtual void draw(const SceneRenderState& state, const Mat4& transform, uint32_t flags) override;
 
     DrawNode3D();
     virtual ~DrawNode3D();
@@ -157,19 +157,12 @@ bool DrawNode3D::init()
     _customCommand.setDrawType(CustomCommand::DrawType::ARRAY);
     _customCommand.setPrimitiveType(CustomCommand::PrimitiveType::LINE);
 
-    const auto& inputs = _programState->getProgram()->getActiveVertexInputs();
-    auto iter          = inputs.find("a_position");
-    auto desc          = axvlm->allocateVertexLayoutDesc();
+    auto desc = axvlm->allocateVertexLayoutDesc();
     desc.startLayout(2);
-    if (iter != inputs.end())
-    {
-        desc.addAttrib(iter->first, &iter->second, rhi::VertexElementType::FLOAT3, 0, false);
-    }
-    iter = inputs.find("a_color");
-    if (iter != inputs.end())
-    {
-        desc.addAttrib(iter->first, &iter->second, rhi::VertexElementType::UBYTE4, sizeof(Vec3), true);
-    }
+    desc.addAttrib(_programState->getVertexInputDesc(rhi::VertexSemantic::POSITION), rhi::VertexElementType::FLOAT3, 0,
+                   false);
+    desc.addAttrib(_programState->getVertexInputDesc(rhi::VertexSemantic::COLOR0), rhi::VertexElementType::UBYTE4,
+                   sizeof(Vec3), true);
     desc.endLayout();
 
     Object::assign(_vertexLayout, axvlm->getVertexLayout(std::move(desc)));
@@ -196,11 +189,11 @@ bool DrawNode3D::init()
     return true;
 }
 
-void DrawNode3D::draw(Renderer* renderer, const Mat4& transform, uint32_t flags)
+void DrawNode3D::draw(const SceneRenderState& state, const Mat4& transform, uint32_t flags)
 {
     _customCommand.init(_globalZOrder);
     // update mvp matrix
-    const auto& matrixP = Camera::getVisitingViewProjectionMatrix();
+    const auto& matrixP = state.getViewProjectionMatrix();
     auto mvp            = matrixP * transform;
     _programState->setUniform(_locMVPMatrix, mvp.m, sizeof(mvp.m));
 
@@ -221,7 +214,7 @@ void DrawNode3D::draw(Renderer* renderer, const Mat4& transform, uint32_t flags)
 
     if (!_buffer.empty())
     {
-        renderer->addCommand(&_customCommand);
+        state.getRenderer()->addCommand(&_customCommand);
     }
 }
 

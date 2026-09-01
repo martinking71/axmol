@@ -63,7 +63,7 @@ Copyright (C) 2008 Apple Inc. All Rights Reserved.
 
 #if AX_ENABLE_MTL
 #    import <Metal/Metal.h>
-#    import "axmol/rhi/metal/DriverMTL.h"
+#    import "axmol/rhi/metal/GraphicsDeviceMTL.h"
 #    import "axmol/rhi/metal/UtilsMTL.h"
 #endif
 #if AX_ENABLE_GL
@@ -181,7 +181,7 @@ static ax::Rect convertKeyboardRectToViewport(CGRect rect, CGSize viewSize)
          multiSampling:(BOOL)sampling
        numberOfSamples:(unsigned int)nSamples
 {
-    GraphicsCore::makeCurrentDriver();
+    GraphicsCore::initialize();
 
     if ((self = [super initWithFrame:frame]))
     {
@@ -211,7 +211,7 @@ static ax::Rect convertKeyboardRectToViewport(CGRect rect, CGSize viewSize)
                 [self release];
                 return nil;
             }
-            GraphicsCore::activateCurrentDriver();
+            GraphicsCore::activate();
         }
     }
 
@@ -299,7 +299,7 @@ static ax::Rect convertKeyboardRectToViewport(CGRect rect, CGSize viewSize)
 - (void)layoutSubviews
 {
     auto director = ax::Director::getInstance();
-    if (!director->isValid())
+    if (!director->isActive())
         return;
 
     auto bounds           = [self bounds];
@@ -324,7 +324,7 @@ static ax::Rect convertKeyboardRectToViewport(CGRect rect, CGSize viewSize)
 
     // Avoid flicker. Issue #350
     if ([NSThread isMainThread])
-        director->stepFrame();
+        director->renderFrame();
 }
 
 - (void)swapBuffers

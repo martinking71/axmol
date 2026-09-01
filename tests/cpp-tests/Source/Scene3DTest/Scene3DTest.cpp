@@ -42,10 +42,10 @@ class SkeletonAnimationCullingFix : public SkeletonAnimation
 public:
     SkeletonAnimationCullingFix() : SkeletonAnimation() {}
 
-    virtual void draw(ax::Renderer* renderer, const ax::Mat4& transform, uint32_t transformFlags) override
+    virtual void draw(const ax::SceneRenderState& state, const ax::Mat4& transform, uint32_t transformFlags) override
     {
-        renderer->setCullMode(CullMode::NONE);
-        SkeletonAnimation::draw(renderer, transform, transformFlags);
+        state.getRenderer()->setCullMode(CullMode::NONE);
+        SkeletonAnimation::draw(state, transform, transformFlags);
         // RenderState::StateBlock::invalidate(ax::RenderState::StateBlock::RS_ALL_ONES);
     }
 
@@ -213,10 +213,10 @@ static int8_t cameraDepth(GAME_CAMERAS_ORDER camera)
     return static_cast<int8_t>(camera - CAMERA_UI_2D);
 }
 
-/** The scenes, located in different position, won't see each other. */
+/** The overlay scenes stay separated because they intentionally reuse some layer masks. */
 static Vec3 s_scenePositons[SCENE_COUNT] = {
     Vec3(0, 0, 0),       //  center  :   UI scene
-    Vec3(0, 10000, 0),   //  top     :   World sub scene
+    Vec3(0, 0, 0),       //  center  :   World sub scene, isolated by USER1 camera mask
     Vec3(10000, 0, 0),   //  right   :   Dialog sub scene
     Vec3(0, -10000, 0),  //  bottom  :   OSD sub scene
 };
@@ -264,10 +264,11 @@ bool Scene3DTestScene::init()
         // create world 3D scene
         _worldScene = Node::create();
         // create a camera to look the 3D models in world 3D scene
-        ca = _gameCameras[CAMERA_WORLD_3D_SCENE] =
-            Camera::createPerspective(60, visibleSize.width / visibleSize.height, 0.1f, 200);
+        ca = _gameCameras[CAMERA_WORLD_3D_SCENE] = Camera::create();
+        ca->configurePerspective(60, visibleSize.width / visibleSize.height, 0.1f, 200);
         ca->setDepth(cameraDepth(CAMERA_WORLD_3D_SCENE));
         ca->setName(s_CameraNames[CAMERA_WORLD_3D_SCENE]);
+        ca->setCameraFlag(s_CF[LAYER_BACKGROUND]);
         _worldScene->addChild(ca);
         // create 3D objects and add to world scene
         createWorld3D();
@@ -279,6 +280,8 @@ bool Scene3DTestScene::init()
         ca->setPosition3D(_player->getPosition3D() + Vec3(0, 45, 60));
         ca->setRotation3D(Vec3(-45, 0, 0));
         _worldScene->setPosition3D(s_scenePositons[SCENE_WORLD]);
+        _worldScene->setCameraMask(s_CM[LAYER_BACKGROUND], true);
+
         this->addChild(_worldScene);
 
         ////////////////////////////////////////////////////////////////////////
@@ -295,18 +298,18 @@ bool Scene3DTestScene::init()
         // create dialog scene, this scene has two dialog and three cameras
         _dlgScene = Node::create();
         // use default camera to render the base 2D elements
-        ca = _gameCameras[CAMERA_DIALOG_2D_BASE] = Camera::create();
+        ca = _gameCameras[CAMERA_DIALOG_2D_BASE] = Camera::create(CameraMode::Classic);
         ca->setDepth(cameraDepth(CAMERA_DIALOG_2D_BASE));
         ca->setName(s_CameraNames[CAMERA_DIALOG_2D_BASE]);
         _dlgScene->addChild(ca);
         // create a camera to look the 3D model in dialog scene
-        ca = _gameCameras[CAMERA_DIALOG_3D_MODEL] = Camera::create();
+        ca = _gameCameras[CAMERA_DIALOG_3D_MODEL] = Camera::create(CameraMode::Classic);
         ca->setDepth(cameraDepth(CAMERA_DIALOG_3D_MODEL));
         ca->setName(s_CameraNames[CAMERA_DIALOG_3D_MODEL]);
         ca->setCameraFlag(s_CF[LAYER_MIDDLE]);
         _dlgScene->addChild(ca);
         // create a camera to look the UI element over on the 3D models
-        ca = _gameCameras[CAMERA_DIALOG_2D_ABOVE] = Camera::create();
+        ca = _gameCameras[CAMERA_DIALOG_2D_ABOVE] = Camera::create(CameraMode::Classic);
         ca->setDepth(cameraDepth(CAMERA_DIALOG_2D_ABOVE));
         ca->setName(s_CameraNames[CAMERA_DIALOG_2D_ABOVE]);
         ca->setCameraFlag(s_CF[LAYER_TOP]);
@@ -324,18 +327,18 @@ bool Scene3DTestScene::init()
         // create description scene, this scene has a dialog and three cameras
         _osdScene = Node::create();
         // use default camera for render 2D element
-        ca = _gameCameras[CAMERA_OSD_2D_BASE] = Camera::create();
+        ca = _gameCameras[CAMERA_OSD_2D_BASE] = Camera::create(CameraMode::Classic);
         ca->setDepth(cameraDepth(CAMERA_OSD_2D_BASE));
         ca->setName(s_CameraNames[CAMERA_OSD_2D_BASE]);
         _osdScene->addChild(ca);
         // create a camera to look the 3D model in dialog scene
-        ca = _gameCameras[CAMERA_OSD_3D_MODEL] = Camera::create();
+        ca = _gameCameras[CAMERA_OSD_3D_MODEL] = Camera::create(CameraMode::Classic);
         ca->setDepth(cameraDepth(CAMERA_OSD_3D_MODEL));
         ca->setName(s_CameraNames[CAMERA_OSD_3D_MODEL]);
         ca->setCameraFlag(s_CF[LAYER_MIDDLE]);
         _osdScene->addChild(ca);
         // create a camera to look the UI element over on the 3D models
-        ca = _gameCameras[CAMERA_OSD_2D_ABOVE] = Camera::create();
+        ca = _gameCameras[CAMERA_OSD_2D_ABOVE] = Camera::create(CameraMode::Classic);
         ca->setDepth(cameraDepth(CAMERA_OSD_2D_ABOVE));
         ca->setName(s_CameraNames[CAMERA_OSD_2D_ABOVE]);
         ca->setCameraFlag(s_CF[LAYER_TOP]);

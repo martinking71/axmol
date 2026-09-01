@@ -23,8 +23,8 @@
  ****************************************************************************/
 #include "axmol/rhi/vulkan/TextureVK.h"
 #include "axmol/rhi/vulkan/UtilsVK.h"
-#include "axmol/rhi/vulkan/DriverVK.h"
-#include "axmol/rhi/SamplerCache.h"
+#include "axmol/rhi/vulkan/GraphicsDeviceVK.h"
+#include "axmol/rhi/SamplerRegistry.h"
 #include "axmol/rhi/RHIUtils.h"
 #include "axmol/base/Logging.h"
 #include <assert.h>
@@ -118,6 +118,14 @@ static void transitionImageLayout(VkCommandBuffer cmd,
         barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
         srcStage              = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
         break;
+    case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
+        barrier.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+        srcStage              = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+        break;
+    case VK_IMAGE_LAYOUT_GENERAL:
+        barrier.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+        srcStage              = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+        break;
     default:
         barrier.srcAccessMask = 0;
         srcStage              = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
@@ -146,6 +154,14 @@ static void transitionImageLayout(VkCommandBuffer cmd,
         barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
         dstStage              = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
         break;
+    case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
+        barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+        dstStage              = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+        break;
+    case VK_IMAGE_LAYOUT_GENERAL:
+        barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+        dstStage              = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+        break;
     default:
         barrier.dstAccessMask = 0;
         dstStage              = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
@@ -155,7 +171,7 @@ static void transitionImageLayout(VkCommandBuffer cmd,
     vkCmdPipelineBarrier(cmd, srcStage, dstStage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 }
 
-void TextureHandle::destroy(DriverImpl* driver, uint64_t fenceValue)
+void TextureHandle::destroy(GraphicsDeviceImpl* driver, uint64_t fenceValue)
 {
     if (view != VK_NULL_HANDLE)
     {
@@ -177,7 +193,7 @@ void TextureHandle::destroy(DriverImpl* driver, uint64_t fenceValue)
 // ------------------------------------------------------------
 // ctor / dtor
 // ------------------------------------------------------------
-TextureImpl::TextureImpl(DriverImpl* driver, const TextureDesc& desc)
+TextureImpl::TextureImpl(GraphicsDeviceImpl* driver, const TextureDesc& desc)
     : _driver(driver), _ownResources(true), _layoutTracker(LEVEL_INITIAL_CAPS, LAYER_INITIAL_CAPS)
 {
     updateTextureDesc(desc);
@@ -186,7 +202,7 @@ TextureImpl::TextureImpl(DriverImpl* driver, const TextureDesc& desc)
         ensureNativeTexture();  // Create the image immediately for render targets
 }
 
-TextureImpl::TextureImpl(DriverImpl* driver,
+TextureImpl::TextureImpl(GraphicsDeviceImpl* driver,
                          VkImage existingImage,
                          VkImageView existingImageView,
                          VkImageUsageFlags usage)
@@ -198,7 +214,7 @@ TextureImpl::TextureImpl(DriverImpl* driver,
     // Note: existingImage is owned externally (e.g., swapchain), we only wrap it.
 }
 
-TextureImpl::TextureImpl(DriverImpl* driver,
+TextureImpl::TextureImpl(GraphicsDeviceImpl* driver,
                          VkImage existingImage,
                          VkImageView existingImageView,
                          VkImageUsageFlags usage,
@@ -242,7 +258,7 @@ TextureImpl::~TextureImpl()
 {
     if (_ownResources)
     {
-        _sampler = VK_NULL_HANDLE;  // SamplerCache handles sampler destruction
+        _sampler = VK_NULL_HANDLE;  // SamplerRegistry handles sampler destruction
         _nativeTexture.destroy(_driver, _lastFenceValue);
     }
     else if (_ownImageView && _nativeTexture.view != VK_NULL_HANDLE)
@@ -291,7 +307,7 @@ void TextureImpl::updateSamplerDesc(const SamplerDesc& sampler)
 {
     _desc.samplerDesc = sampler;
 
-    _sampler = static_cast<VkSampler>(SamplerCache::getInstance()->getSampler(sampler));
+    _sampler = static_cast<VkSampler>(SamplerRegistry::getInstance()->getSampler(sampler));
     assert(_sampler && "Gets vkCreateSampler failed");
 }
 

@@ -602,7 +602,7 @@ public:
     /**
      * @lua NA
      */
-    void draw(Renderer* renderer, const Mat4& parentTransform, uint32_t parentFlags) override;
+    void draw(const SceneRenderState& state, const Mat4& parentTransform, uint32_t parentFlags) override;
     /**
      * @lua NA
      */
@@ -632,6 +632,12 @@ public:
 
     void openKeyboard() const;
     void closeKeyboard() const;
+
+    /**
+     * Get the editing state of the EditBox
+     * @return true if editing
+     */
+    bool isEditing() const;
 
 protected:
     void releaseUpEvent() override;

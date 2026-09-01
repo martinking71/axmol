@@ -47,6 +47,7 @@
 #include "axmol/scene/Camera.h"
 #include "axmol/scene/Node.h"
 #include "axmol/2d/ProtectedNode.h"
+#include "axmol/base/Profiling.h"
 
 #define DUMP_LISTENER_ITEM_PRIORITY_INFO 0
 
@@ -115,7 +116,9 @@ static PointerEvent::CaptureBits makePointerCaptureBits(PointerEvent* event)
 
 static bool pointerHitTest(PointerEvent* event, const Camera* camera, PointerEventListener* listener, Node* target)
 {
-    if (camera && event->getPointerType() != PointerType::Controller)
+    event->setCamera(camera);
+
+    if (!event->resolveRayForCamera(camera) && camera && event->getPointerType() != PointerType::Controller)
         event->setRay(camera->screenToRay(event->getPoint()));
 
     Vec3 hitPoint;
@@ -944,6 +947,8 @@ void EventDispatcher::dispatchEventToListeners(EventListenerVector* listeners,
 
 void EventDispatcher::dispatchEvent(Event* event, bool forced)
 {
+    AX_PROFILER_ZONE_SCOPED;
+
     if (!_isEnabled && !forced)
         return;
 
@@ -1274,7 +1279,7 @@ void EventDispatcher::dispatchUncapturedPointerEvent(PointerEvent* event, Pointe
             if (!hitCamera)
                 continue;
 
-            // Camera context for input callbacks. Do not use Camera::_visitingCamera.
+            // Camera context for input callbacks.
             event->setCamera(hitCamera);
 
             if (deliverUncapturedEvent(l))
@@ -1875,6 +1880,49 @@ const Camera* EventDispatcher::findHitCameraForListener(PointerEvent* event,
     }
 
     return nullptr;
+}
+
+PointerHitResult EventDispatcher::hitTestPointerEvent(PointerEvent* event)
+{
+    if (!event)
+        return {};
+
+    event->clearHitResult();
+    event->setCamera(nullptr);
+
+    sortEventListeners(PointerEventListener::LISTENER_ID);
+
+    auto listeners = getListeners(PointerEventListener::LISTENER_ID);
+    auto scene     = Director::getInstance()->getRunningScene();
+    if (!listeners || !scene)
+        return {};
+
+    auto sceneGraphPriorityListeners = listeners->getSceneGraphPriorityListeners();
+    if (!sceneGraphPriorityListeners)
+        return {};
+
+    auto cameras = scene->getCameras();
+    for (auto&& listener : *sceneGraphPriorityListeners)
+    {
+        if (!listener || !listener->isEnabled() || listener->isPaused() || !listener->isAttached())
+            continue;
+
+        auto target = listener->getAssociatedNode();
+        if (!target || _nodePriorityMap.find(target) == _nodePriorityMap.end())
+            continue;
+
+        auto pointerListener = static_cast<PointerEventListener*>(listener);
+        if (!findHitCameraForListener(event, pointerListener, cameras))
+            continue;
+
+        auto result = event->getHitResult();
+        event->setCamera(nullptr);
+        return result;
+    }
+
+    event->clearHitResult();
+    event->setCamera(nullptr);
+    return {};
 }
 
 }  // namespace ax

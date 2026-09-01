@@ -310,7 +310,7 @@ bool SampleDrawNode::initWithWorld(b2WorldId worldId)
         auto pipelinePS = new rhi::ProgramState(program);
         auto vfmt       = axvlm->allocateVertexLayoutDesc();
         vfmt.startLayout(3);
-        vfmt.addAttrib("a_localPosition", program->getVertexInputDesc("a_localPosition"), rhi::VertexElementType::FLOAT2, 0,
+        vfmt.addAttrib(program->getVertexInputDesc(rhi::VertexSemantic::POSITION), rhi::VertexElementType::FLOAT2, 0,
                        false);
         cmd.createVertexBuffer(sizeof(Vec2), 6, CustomCommand::BufferUsage::STATIC);
         float a           = 1.1f;
@@ -319,9 +319,9 @@ bool SampleDrawNode::initWithWorld(b2WorldId worldId)
         cmd.setVertexDrawInfo(0, 6);
 
         // instanced attributes
-        vfmt.addAttrib("a_instanceColor", program->getVertexInputDesc("a_instanceColor"), rhi::VertexElementType::FLOAT4,
+        vfmt.addAttrib(program->getVertexInputDesc(rhi::VertexSemantic::TEXCOORD0), rhi::VertexElementType::FLOAT4,
                        offsetof(CircleData, rgba), false, 1);
-        vfmt.addAttrib("a_instancePosAndRadius", program->getVertexInputDesc("a_instancePosAndRadius"),
+        vfmt.addAttrib(program->getVertexInputDesc(rhi::VertexSemantic::TEXCOORD1),
                        rhi::VertexElementType::FLOAT4, offsetof(CircleData, position), false, 1);
         vfmt.endLayout();
 
@@ -342,7 +342,7 @@ bool SampleDrawNode::initWithWorld(b2WorldId worldId)
         auto pipelinePS = new rhi::ProgramState(program);
         auto vfmt       = axvlm->allocateVertexLayoutDesc();
         vfmt.startLayout(4);
-        vfmt.addAttrib("a_localPosition", program->getVertexInputDesc("a_localPosition"), rhi::VertexElementType::FLOAT2, 0,
+        vfmt.addAttrib(program->getVertexInputDesc(rhi::VertexSemantic::POSITION), rhi::VertexElementType::FLOAT2, 0,
                        false);
 
         cmd.createVertexBuffer(sizeof(Vec2), 6, CustomCommand::BufferUsage::STATIC);
@@ -352,11 +352,11 @@ bool SampleDrawNode::initWithWorld(b2WorldId worldId)
         cmd.setVertexDrawInfo(0, 6);
 
         // instanced attributes
-        vfmt.addAttrib("a_instanceTransform", program->getVertexInputDesc("a_instanceTransform"),
+        vfmt.addAttrib(program->getVertexInputDesc(rhi::VertexSemantic::TEXCOORD2),
                        rhi::VertexElementType::FLOAT4, offsetof(SolidCircleData, transform), false, 1);
-        vfmt.addAttrib("a_instanceColor", program->getVertexInputDesc("a_instanceColor"), rhi::VertexElementType::FLOAT4,
+        vfmt.addAttrib(program->getVertexInputDesc(rhi::VertexSemantic::TEXCOORD0), rhi::VertexElementType::FLOAT4,
                        offsetof(SolidCircleData, rgba), false, 1);
-        vfmt.addAttrib("a_instanceRadius", program->getVertexInputDesc("a_instanceRadius"), rhi::VertexElementType::FLOAT4,
+        vfmt.addAttrib(program->getVertexInputDesc(rhi::VertexSemantic::TEXCOORD1), rhi::VertexElementType::FLOAT4,
                        offsetof(SolidCircleData, radius), false, 1);
         vfmt.endLayout();
 
@@ -376,7 +376,7 @@ bool SampleDrawNode::initWithWorld(b2WorldId worldId)
         auto pipelinePS = new rhi::ProgramState(program);
         auto vfmt       = axvlm->allocateVertexLayoutDesc();
         vfmt.startLayout(4);
-        vfmt.addAttrib("a_localPosition", program->getVertexInputDesc("a_localPosition"), rhi::VertexElementType::FLOAT2, 0,
+        vfmt.addAttrib(program->getVertexInputDesc(rhi::VertexSemantic::POSITION), rhi::VertexElementType::FLOAT2, 0,
                        false);
 
         cmd.createVertexBuffer(sizeof(Vec2), 6, CustomCommand::BufferUsage::STATIC);
@@ -386,12 +386,12 @@ bool SampleDrawNode::initWithWorld(b2WorldId worldId)
         cmd.setVertexDrawInfo(0, 6);
 
         // instanced attributes
-        vfmt.addAttrib("a_instanceTransform", program->getVertexInputDesc("a_instanceTransform"),
+        vfmt.addAttrib(program->getVertexInputDesc(rhi::VertexSemantic::TEXCOORD2),
                        rhi::VertexElementType::FLOAT4, offsetof(CapsuleData, transform), false, 1);
-        vfmt.addAttrib("a_instanceColor", program->getVertexInputDesc("a_instanceColor"), rhi::VertexElementType::FLOAT4,
+        vfmt.addAttrib(program->getVertexInputDesc(rhi::VertexSemantic::TEXCOORD0), rhi::VertexElementType::FLOAT4,
                        offsetof(CapsuleData, rgba), false, 1);
-        vfmt.addAttrib("a_instanceRadiusAndLength", program->getVertexInputDesc("a_instanceRadiusAndLength"),
-                       rhi::VertexElementType::FLOAT4, offsetof(CapsuleData, radius), false, 1);
+        vfmt.addAttrib(program->getVertexInputDesc(rhi::VertexSemantic::TEXCOORD1), rhi::VertexElementType::FLOAT4,
+                       offsetof(CapsuleData, radius), false, 1);
         vfmt.endLayout();
 
         auto pipelineVL = axvlm->getVertexLayout(std::move(vfmt));
@@ -422,9 +422,9 @@ void SampleDrawNode::AddCircle(const SolidCircleData& circle)
     _solidCirclesDirty = true;
 }
 
-void SampleDrawNode::draw(Renderer* renderer, const Mat4& transform, uint32_t flags)
+void SampleDrawNode::draw(const SceneRenderState& state, const Mat4& transform, uint32_t flags)
 {
-    PhysicsDebugNode::draw(renderer, transform, flags);
+    PhysicsDebugNode::draw(state, transform, flags);
 
     /// circle
 
@@ -446,7 +446,7 @@ void SampleDrawNode::draw(Renderer* renderer, const Mat4& transform, uint32_t fl
 
     // submit draw command
     if (_customCommandCircle.getInstanceCount() > 0)
-        submitDrawCommand(renderer, _customCommandCircle, transform);
+        submitDrawCommand(state, _customCommandCircle, transform);
 
     /// solid circle
 
@@ -469,7 +469,7 @@ void SampleDrawNode::draw(Renderer* renderer, const Mat4& transform, uint32_t fl
 
     // submit draw command
     if (_customCommandSolidCircle.getInstanceCount() > 0)
-        submitDrawCommand(renderer, _customCommandSolidCircle, transform);
+        submitDrawCommand(state, _customCommandSolidCircle, transform);
 
     /// capsule
 
@@ -491,10 +491,10 @@ void SampleDrawNode::draw(Renderer* renderer, const Mat4& transform, uint32_t fl
 
     // submit draw command
     if (_customCommandCapsule.getInstanceCount() > 0)
-        submitDrawCommand(renderer, _customCommandCapsule, transform);
+        submitDrawCommand(state, _customCommandCapsule, transform);
 }
 
-void SampleDrawNode::submitDrawCommand(Renderer* renderer, CustomCommand& cmd, const Mat4& transform)
+void SampleDrawNode::submitDrawCommand(const SceneRenderState& state, CustomCommand& cmd, const Mat4& transform)
 {
     rhi::BlendDesc& blendDescriptor             = cmd.blendDesc();
     blendDescriptor.blendEnabled                = true;
@@ -504,7 +504,7 @@ void SampleDrawNode::submitDrawCommand(Renderer* renderer, CustomCommand& cmd, c
     blendDescriptor.destinationAlphaBlendFactor = rhi::BlendFactor::ONE_MINUS_SRC_ALPHA;
 
     auto pipelinePS     = cmd.unsafePS();
-    const auto& matrixP = Camera::getVisitingViewProjectionMatrix();
+    const auto& matrixP = state.getViewProjectionMatrix();
     Mat4 matrixMVP      = matrixP * transform;
     auto mvpLocation    = pipelinePS->getUniformLocation("u_MVPMatrix");
     pipelinePS->setUniform(mvpLocation, matrixMVP.m, sizeof(matrixMVP.m));
@@ -516,7 +516,7 @@ void SampleDrawNode::submitDrawCommand(Renderer* renderer, CustomCommand& cmd, c
     pipelinePS->setUniform(uniformLocation, &pixelScale, sizeof(pixelScale));
 
     cmd.init(_globalZOrder);
-    renderer->addCommand(&cmd);
+    state.getRenderer()->addCommand(&cmd);
 }
 
 void SampleDrawNode::clear()

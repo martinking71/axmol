@@ -12,7 +12,6 @@ on:
       - '.github/workflows/publish.yml'
       - '.github/workflows/debian.yml'
       - '.github/workflows/source-tidy.yml'
-      - 'tools/cmdline/make-pkg.ps1'
   pull_request:
     types: [opened, synchronize, reopened]
     paths-ignore:
@@ -228,7 +227,7 @@ jobs:
 
     - name: Build
       shell: pwsh
-      run: ./tools/cmdline/axmol -p wasm -O3 -xc '-DAX_ENABLE_EXT_EFFEKSEER=ON,-DAX_WASM_THREADS=8,-DAX_ENABLE_VR=ON' -j2 -t 'cpp-tests,fairygui-tests,lua-tests'
+      run: ./tools/cmdline/axmol -p wasm -O3 -xc '-DAX_ENABLE_EXT_EFFEKSEER=ON,-DAX_ENABLE_EXT_SVG=ON,-DAX_WASM_THREADS=8,-DAX_ENABLE_VR=ON' -j2 -t 'cpp-tests,fairygui-tests,lua-tests'
     - uses: actions/upload-artifact@v6
       with:
         name: wasm
