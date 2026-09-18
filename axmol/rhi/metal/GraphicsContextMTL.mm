@@ -1,41 +1,30 @@
 /****************************************************************************
  Copyright (c) 2018-2019 Xiamen Yaji Software Co., Ltd.
- Copyright (c) 2019-present Axmol Engine contributors (see AUTHORS.md).
+ Copyright (c) 2019-present Simdsoft Limited.
 
  https://axmol.dev/
 
- Permission is hereby granted, free of charge, to any person obtaining a copy
- of this software and associated documentation files (the "Software"), to deal
- in the Software without restriction, including without limitation the rights
- to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- copies of the Software, and to permit persons to whom the Software is
- furnished to do so, subject to the following conditions:
-
- The above copyright notice and this permission notice shall be included in
- all copies or substantial portions of the Software.
-
- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- THE SOFTWARE.
+ SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "axmol/rhi/metal/GraphicsContextMTL.h"
 #include "axmol/rhi/metal/BufferMTL.h"
 #include "axmol/rhi/metal/GraphicsDeviceMTL.h"
-#include "axmol/rhi/metal/RenderPipelineMTL.h"
+#include "axmol/rhi/metal/GraphicsPipelineMTL.h"
+#include "axmol/rhi/metal/ComputePipelineMTL.h"
 #include "axmol/rhi/metal/TextureMTL.h"
 #include "axmol/rhi/metal/UtilsMTL.h"
 #include "axmol/rhi/metal/BufferManager.h"
 #include "axmol/rhi/metal/DepthStencilStateMTL.h"
 #include "axmol/rhi/metal/RenderTargetMTL.h"
+#include "axmol/rhi/metal/ProgramMTL.h"
 #include "axmol/rhi/SamplerRegistry.h"
 #include "axmol/platform/Application.h"
 
 #include <algorithm>
+
+extern "C" void* objc_autoreleasePoolPush(void);
+extern "C" void objc_autoreleasePoolPop(void*);
 
 #if AX_TARGET_PLATFORM == AX_PLATFORM_MAC
 #    import <AppKit/AppKit.h>
@@ -151,7 +140,7 @@ GraphicsContextImpl::GraphicsContextImpl(GraphicsDeviceImpl* driver, SurfaceHand
     auto screenPF           = UtilsMTL::toMTLPixelFormat(UtilsMTL::getDefaultColorAttachmentPixelFormat());
 #if AX_TARGET_PLATFORM == AX_PLATFORM_MAC
     CGSize fbSize;
-    NSView* contentView = static_cast<NSView*>(surface);
+    NSView* contentView = (__bridge NSView*)surface.ptr;
     @autoreleasepool
     {
         const NSRect contentRect = [contentView frame];
@@ -169,7 +158,7 @@ GraphicsContextImpl::GraphicsContextImpl(GraphicsDeviceImpl* driver, SurfaceHand
     _mtlLayer.displaySyncEnabled = contextAttrs.vsync;
     [contentView setLayer:_mtlLayer];
 #else
-    UIView* view              = static_cast<UIView*>(surface);
+    UIView* view              = (__bridge UIView*)surface.ptr;
     _mtlLayer                 = (CAMetalLayer*)[view layer];
     _mtlLayer.device          = mtlDevice;
     _mtlLayer.pixelFormat     = screenPF;
@@ -194,9 +183,13 @@ GraphicsContextImpl::~GraphicsContextImpl()
     [oneOffBuffer waitUntilCompleted];
 
     AX_SAFE_RELEASE_NULL(_screenRT);
-    AX_SAFE_RELEASE_NULL(_renderPipeline);
+    AX_SAFE_RELEASE_NULL(_graphicsPipeline);
 
-    [oneOffBuffer release];
+    if (_autoreleasePool)
+    {
+        objc_autoreleasePoolPop(_autoreleasePool);
+        _autoreleasePool = nullptr;
+    }
 
     dispatch_semaphore_signal(_frameBoundarySemaphore);
 }
@@ -213,9 +206,9 @@ void GraphicsContextImpl::setDepthStencilState(DepthStencilState* depthStencilSt
     _depthStencilState = static_cast<DepthStencilStateImpl*>(depthStencilState);
 }
 
-void GraphicsContextImpl::setRenderPipeline(RenderPipeline* renderPipeline)
+void GraphicsContextImpl::setGraphicsPipeline(GraphicsPipeline* graphicsPipeline)
 {
-    Object::assign(_renderPipeline, static_cast<RenderPipelineImpl*>(renderPipeline));
+    Object::assign(_graphicsPipeline, static_cast<GraphicsPipelineImpl*>(graphicsPipeline));
 }
 
 id<CAMetalDrawable> GraphicsContextImpl::acquireDrawable()
@@ -233,13 +226,12 @@ void GraphicsContextImpl::releaseDrawable()
 
 bool GraphicsContextImpl::beginFrame()
 {
-    _autoReleasePool = [[NSAutoreleasePool alloc] init];
+    _autoreleasePool = objc_autoreleasePoolPush();
     dispatch_semaphore_wait(_frameBoundarySemaphore, DISPATCH_TIME_FOREVER);
 
     _currentCmdBuffer = [_mtlCmdQueue commandBuffer];
     // [_currentCmdBuffer enqueue];
     // commit will enqueue automatically
-    [_currentCmdBuffer retain];
 
     BufferManager::beginFrame();
     return true;
@@ -253,24 +245,30 @@ void GraphicsContextImpl::beginRenderPass(RenderTarget* renderTarget, const Rend
         return;
     }
 
-    _currentRT             = renderTarget;
-    _currentRenderPassDesc = renderPassDesc;
+    const bool resumeInterruptedPass = _renderPassInterrupted && _currentRT == renderTarget;
+    _renderPassInterrupted           = false;
+    _currentRT                       = renderTarget;
+    _currentRenderPassDesc           = renderPassDesc;
 
     if (_mtlRenderEncoder != nil)
     {
         [_mtlRenderEncoder endEncoding];
-        [_mtlRenderEncoder release];
         _mtlRenderEncoder = nil;
     }
 
     MTLRenderPassDescriptor* mtlDesc = [MTLRenderPassDescriptor renderPassDescriptor];
     auto rtMTL                       = static_cast<RenderTargetImpl*>(_currentRT);
-    rtMTL->applyRenderPassAttachments(renderPassDesc, mtlDesc);
+    auto nativeRenderPassDesc        = renderPassDesc;
+    if (resumeInterruptedPass)
+    {
+        nativeRenderPassDesc.flags.clear        = TargetBufferFlags::NONE;
+        nativeRenderPassDesc.flags.discardStart = TargetBufferFlags::NONE;
+    }
+    rtMTL->applyRenderPassAttachments(nativeRenderPassDesc, mtlDesc);
 
     _renderTargetWidth  = (unsigned int)mtlDesc.colorAttachments[0].texture.width;
     _renderTargetHeight = (unsigned int)mtlDesc.colorAttachments[0].texture.height;
     _mtlRenderEncoder   = [_currentCmdBuffer renderCommandEncoderWithDescriptor:mtlDesc];
-    [_mtlRenderEncoder retain];
     //    [_mtlRenderEncoder setFrontFacingWinding:MTLWindingCounterClockwise];
 }
 
@@ -285,8 +283,8 @@ void GraphicsContextImpl::updatePipelineState(const RenderTarget* rt,
 {
     _primitiveType = toMTLPrimitive(primitiveType);
     GraphicsContext::updatePipelineState(rt, desc, primitiveType);
-    _renderPipeline->update(rt, desc);
-    [_mtlRenderEncoder setRenderPipelineState:_renderPipeline->getMTLRenderPipelineState()];
+    _graphicsPipeline->update(rt, desc);
+    [_mtlRenderEncoder setRenderPipelineState:_graphicsPipeline->getMTLRenderPipelineState()];
 }
 
 void GraphicsContextImpl::setViewport(int x, int y, unsigned int w, unsigned int h)
@@ -323,9 +321,16 @@ void GraphicsContextImpl::setInstanceBuffer(Buffer* buffer)
 {
     // Vertex instancing transform buffer is bound in index VBO_INSTANCING_BINDING_INDEX.
     // TODO: sync device binding macros to AXSLCC
-    [_mtlRenderEncoder setVertexBuffer:static_cast<BufferImpl*>(buffer)->getMTLBuffer()
-                                offset:0
-                               atIndex:GraphicsDeviceImpl::VBO_INSTANCING_BINDING_INDEX];
+    if (buffer)
+    {
+        [_mtlRenderEncoder setVertexBuffer:static_cast<BufferImpl*>(buffer)->getMTLBuffer()
+                                    offset:0
+                                   atIndex:GraphicsDeviceImpl::VBO_INSTANCING_BINDING_INDEX];
+    }
+    else
+    {
+        [_mtlRenderEncoder setVertexBuffer:nil offset:0 atIndex:GraphicsDeviceImpl::VBO_INSTANCING_BINDING_INDEX];
+    }
 }
 
 void GraphicsContextImpl::setIndexBuffer(Buffer* buffer)
@@ -335,7 +340,6 @@ void GraphicsContextImpl::setIndexBuffer(Buffer* buffer)
         return;
 
     _mtlIndexBuffer = static_cast<BufferImpl*>(buffer)->getMTLBuffer();
-    [_mtlIndexBuffer retain];
 }
 
 void GraphicsContextImpl::drawArrays(size_t start, size_t count, bool wireframe /* unused */)
@@ -383,6 +387,120 @@ void GraphicsContextImpl::endRenderPass()
     afterDraw();
 }
 
+bool GraphicsContextImpl::dispatch(const ComputeDispatchDesc& desc)
+{
+    if (!desc.programState || !desc.pipeline)
+        return false;
+
+    auto* pipelineProgram = desc.pipeline->getProgram();
+    if (!pipelineProgram || pipelineProgram != desc.programState->getProgram())
+    {
+        AXLOGE("ComputePipeline and ProgramState program mismatch");
+        return false;
+    }
+
+    auto program = static_cast<ProgramImpl*>(pipelineProgram);
+    if (!program || !program->getCSModule())
+        return false;
+
+    auto* computePipeline                     = static_cast<ComputePipelineImpl*>(desc.pipeline);
+    id<MTLComputePipelineState> pipelineState = computePipeline->getMTLComputePipelineState();
+    if (pipelineState == nil)
+        return false;
+
+    // Compute runs outside render passes. Preserve the current attachments and
+    // let the next normal beginRenderPass() resume them with load actions.
+    if (_mtlRenderEncoder)
+    {
+        auto rtMTL = static_cast<RenderTargetImpl*>(_currentRT);
+        for (size_t i = 0; i < rtMTL->getNativeColorFormats().size(); ++i)
+            [_mtlRenderEncoder setColorStoreAction:MTLStoreActionStore atIndex:i];
+        if (rtMTL->getDepthStencilAttachment())
+        {
+            [_mtlRenderEncoder setDepthStoreAction:MTLStoreActionStore];
+            [_mtlRenderEncoder setStencilStoreAction:MTLStoreActionStore];
+        }
+        [_mtlRenderEncoder endEncoding];
+        _mtlRenderEncoder      = nil;
+        _renderPassInterrupted = true;
+    }
+
+    id<MTLComputeCommandEncoder> computeEncoder = [_currentCmdBuffer computeCommandEncoder];
+    [computeEncoder setComputePipelineState:pipelineState];
+
+    _programState = desc.programState;
+
+    auto& callbackUniforms = desc.programState->getCallbackUniforms();
+    for (auto& cb : callbackUniforms)
+        cb.second(_programState, cb.first);
+
+    auto& cpuBuffer = desc.programState->getUniformBuffer();
+    if (!cpuBuffer.empty())
+    {
+        for (auto& uboInfo : desc.programState->getActiveUniformBlockInfos())
+        {
+            [computeEncoder setBytes:cpuBuffer.data() + uboInfo.cpuOffset
+                              length:uboInfo.sizeBytes
+                             atIndex:uboInfo.binding];
+        }
+    }
+
+    // Textures (separate MTL namespace, index = unified slot).
+    for (const auto& [bindingIndex, bindingSet] : desc.programState->getTextureBindingSets())
+    {
+        for (size_t k = 0; k < bindingSet.texs.size(); ++k)
+        {
+            auto textureImpl = static_cast<TextureImpl*>(bindingSet.texs[k]);
+            [computeEncoder setTexture:textureImpl->internalHandle() atIndex:bindingIndex + k];
+        }
+    }
+
+    // Samplers (separate MTL namespace).
+    auto samplerRegistry = SamplerRegistry::getInstance();
+    for (const auto& samplerInfo : program->getActiveSamplerInfos())
+    {
+        if (!samplerInfo.samplerId || samplerInfo.count == 0)
+            continue;
+
+        auto samplerId = samplerInfo.samplerId;
+        if (samplerInfo.presetIndex < 0)
+        {
+            if (auto overrideId = _programState->getSamplerOverride(samplerInfo.binding))
+                samplerId = overrideId;
+        }
+
+        auto sampler      = samplerRegistry->getSampler(samplerId);
+        auto samplerState = (__bridge id<MTLSamplerState>)sampler.ptr;
+        if (samplerState == nil)
+            continue;
+
+        for (uint16_t i = 0; i < samplerInfo.count; ++i)
+            [computeEncoder setSamplerState:samplerState atIndex:samplerInfo.binding + i];
+    }
+
+    // Storage buffers ([[buffer(slot)]]).
+    for (const auto& [binding, bindingSet] : desc.programState->getStorageBufferBindingSets())
+    {
+        if (!bindingSet.buffer)
+            continue;
+        auto bufferImpl         = static_cast<BufferImpl*>(bindingSet.buffer);
+        id<MTLBuffer> mtlBuffer = bufferImpl->getMTLBuffer();
+        if (mtlBuffer == nil)
+            continue;
+        [computeEncoder setBuffer:mtlBuffer offset:0 atIndex:binding];
+    }
+
+    const auto& localSize       = desc.programState->getProgram()->getComputeLocalSize();
+    MTLSize threadgroupsPerGrid = MTLSizeMake(desc.groupCountX, desc.groupCountY, desc.groupCountZ);
+    MTLSize threadsPerThreadgroup =
+        MTLSizeMake(std::max(localSize[0], 1), std::max(localSize[1], 1), std::max(localSize[2], 1));
+    [computeEncoder dispatchThreadgroups:threadgroupsPerGrid threadsPerThreadgroup:threadsPerThreadgroup];
+    [computeEncoder endEncoding];
+
+    _programState = nullptr;
+    return true;
+}
+
 void GraphicsContextImpl::readPixels(RenderTarget* rt, std::function<void(const PixelBufferDesc&)> callback)
 {
     auto rtMTL = static_cast<RenderTargetImpl*>(rt);
@@ -397,8 +515,8 @@ void GraphicsContextImpl::readPixels(RenderTarget* rt, std::function<void(const 
 void GraphicsContextImpl::endFrame()
 {
     [_mtlRenderEncoder endEncoding];
-    [_mtlRenderEncoder release];
-    _mtlRenderEncoder = nil;
+    _mtlRenderEncoder      = nil;
+    _renderPassInterrupted = false;
 
     auto drawable = acquireDrawable();
     [_currentCmdBuffer presentDrawable:drawable];
@@ -411,7 +529,11 @@ void GraphicsContextImpl::endFrame()
     flush();
 
     releaseDrawable();
-    [_autoReleasePool drain];
+    if (_autoreleasePool)
+    {
+        objc_autoreleasePoolPop(_autoreleasePool);
+        _autoreleasePool = nullptr;
+    }
 }
 
 void GraphicsContextImpl::submitCurrentFrameCommands(bool waitForCompletion)
@@ -427,14 +549,13 @@ void GraphicsContextImpl::submitCurrentFrameCommands(bool waitForCompletion)
 
         flushCaptureCommands();
 
-        [_currentCmdBuffer release];
         _currentCmdBuffer = nil;
     }
 
-    _currentCmdBuffer = [_mtlCmdQueue commandBuffer];
-    [_currentCmdBuffer retain];
+    _currentCmdBuffer      = [_mtlCmdQueue commandBuffer];
     _currentRenderPassDesc = {};
     _currentRT             = nullptr;
+    _renderPassInterrupted = false;
 }
 
 void GraphicsContextImpl::endEncoding()
@@ -442,7 +563,6 @@ void GraphicsContextImpl::endEncoding()
     if (_mtlRenderEncoder)
     {
         [_mtlRenderEncoder endEncoding];
-        [_mtlRenderEncoder release];
     }
     _mtlRenderEncoder = nil;
 }
@@ -456,7 +576,6 @@ void GraphicsContextImpl::flush()
 
         flushCaptureCommands();
 
-        [_currentCmdBuffer release];
         _currentCmdBuffer = nil;
     }
 }
@@ -503,7 +622,6 @@ void GraphicsContextImpl::afterDraw()
 {
     if (_mtlIndexBuffer)
     {
-        [_mtlIndexBuffer release];
         _mtlIndexBuffer = nullptr;
     }
 
@@ -549,8 +667,15 @@ void GraphicsContextImpl::setTexturesAndSamplers() const
         if (!samplerInfo.samplerId || samplerInfo.binding < 0 || samplerInfo.count == 0)
             continue;
 
-        const auto sampler      = samplerRegistry->getSampler(samplerInfo.samplerId);
-        const auto samplerState = static_cast<id<MTLSamplerState>>(sampler);
+        auto samplerId = samplerInfo.samplerId;
+        if (samplerInfo.presetIndex < 0)
+        {
+            if (auto overrideId = _programState->getSamplerOverride(samplerInfo.binding))
+                samplerId = overrideId;
+        }
+
+        const auto sampler      = samplerRegistry->getSampler(samplerId);
+        const auto samplerState = (__bridge id<MTLSamplerState>)sampler.ptr;
 
         if (samplerState == nil)
         {
@@ -574,25 +699,41 @@ void GraphicsContextImpl::setUniformBuffer() const
             cb.second(_programState, cb.first);
 
         auto& cpuBuffer = _programState->getUniformBuffer();
-        if (cpuBuffer.empty())
-            return;
-        const auto bufferPtr = cpuBuffer.data();
-        for (auto& uboInfo : _programState->getActiveUniformBlockInfos())
+        if (!cpuBuffer.empty())
         {
-            switch (uboInfo.stage)
+            const auto bufferPtr = cpuBuffer.data();
+            for (auto& uboInfo : _programState->getActiveUniformBlockInfos())
             {
-            case ShaderStage::VERTEX:
-                [_mtlRenderEncoder setVertexBytes:bufferPtr + uboInfo.cpuOffset
-                                           length:uboInfo.sizeBytes
-                                          atIndex:VS_UBO_BINDING_INDEX];
-                break;
-            case ShaderStage::FRAGMENT:
-                [_mtlRenderEncoder setFragmentBytes:bufferPtr + uboInfo.cpuOffset
-                                             length:uboInfo.sizeBytes
-                                            atIndex:FS_UBO_BINDING_INDEX];
-                break;
-            default:;
+                switch (uboInfo.stage)
+                {
+                case ShaderStage::VERTEX:
+                    [_mtlRenderEncoder setVertexBytes:bufferPtr + uboInfo.cpuOffset
+                                               length:uboInfo.sizeBytes
+                                              atIndex:uboInfo.binding];
+                    break;
+                case ShaderStage::FRAGMENT:
+                    [_mtlRenderEncoder setFragmentBytes:bufferPtr + uboInfo.cpuOffset
+                                                 length:uboInfo.sizeBytes
+                                                atIndex:uboInfo.binding];
+                    break;
+                default:;
+                }
             }
+        }
+
+        // Bind storage buffers to the graphics stages (GPU render VS/PS). Binding
+        // to an unused stage is harmless in Metal.
+        for (const auto& [binding, bindingSet] : _programState->getStorageBufferBindingSets())
+        {
+            if (!bindingSet.buffer)
+                continue;
+            auto bufferImpl         = static_cast<BufferImpl*>(bindingSet.buffer);
+            id<MTLBuffer> mtlBuffer = bufferImpl->getMTLBuffer();
+            if (mtlBuffer == nil)
+                continue;
+
+            [_mtlRenderEncoder setVertexBuffer:mtlBuffer offset:0 atIndex:binding];
+            [_mtlRenderEncoder setFragmentBuffer:mtlBuffer offset:0 atIndex:binding];
         }
     }
 }
@@ -676,7 +817,6 @@ void GraphicsContextImpl::readPixels(id<MTLTexture> texture,
           pbd._width  = static_cast<int>(rectWidth);
           pbd._height = static_cast<int>(rectHeight);
       }
-      [readPixelsTexture release];
     }];
     [oneOffBuffer commit];
     [oneOffBuffer waitUntilCompleted];

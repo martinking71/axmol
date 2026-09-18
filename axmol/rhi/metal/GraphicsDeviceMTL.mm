@@ -1,32 +1,17 @@
 /****************************************************************************
  Copyright (c) 2018-2019 Xiamen Yaji Software Co., Ltd.
- Copyright (c) 2019-present Axmol Engine contributors (see AUTHORS.md).
+ Copyright (c) 2019-present Simdsoft Limited.
 
  https://axmol.dev/
 
- Permission is hereby granted, free of charge, to any person obtaining a copy
- of this software and associated documentation files (the "Software"), to deal
- in the Software without restriction, including without limitation the rights
- to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- copies of the Software, and to permit persons to whom the Software is
- furnished to do so, subject to the following conditions:
-
- The above copyright notice and this permission notice shall be included in
- all copies or substantial portions of the Software.
-
- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- THE SOFTWARE.
+ SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "axmol/rhi/metal/GraphicsDeviceMTL.h"
 #include "axmol/rhi/metal/GraphicsContextMTL.h"
 #include "axmol/rhi/metal/BufferMTL.h"
-#include "axmol/rhi/metal/RenderPipelineMTL.h"
+#include "axmol/rhi/metal/GraphicsPipelineMTL.h"
+#include "axmol/rhi/metal/ComputePipelineMTL.h"
 #include "axmol/rhi/metal/ShaderModuleMTL.h"
 #include "axmol/rhi/metal/DepthStencilStateMTL.h"
 #include "axmol/rhi/metal/TextureMTL.h"
@@ -425,10 +410,20 @@ bool GraphicsDeviceImpl::init()
 
     UtilsMTL::initGPUTextureFormats();
 
-    _caps.maxAttributes     = getMaxVertexAttributes(_featureSet);
-    _caps.maxSamplesAllowed = getMaxSamplerEntries(_featureSet);
-    _caps.maxTextureUnits   = getMaxTextureEntries(_featureSet);
-    _caps.maxTextureSize    = getMaxTextureWidthHeight(_featureSet);
+    _caps.maxAttributes                  = getMaxVertexAttributes(_featureSet);
+    _caps.maxSamplesAllowed              = getMaxSamplerEntries(_featureSet);
+    _caps.maxTextureUnits                = getMaxTextureEntries(_featureSet);
+    _caps.maxTextureSize                 = getMaxTextureWidthHeight(_featureSet);
+    _caps.maxTexture3DSize               = _caps.maxTextureSize;
+    _caps.maxComputeWorkGroupCount[0]    = 65535;
+    _caps.maxComputeWorkGroupCount[1]    = 65535;
+    _caps.maxComputeWorkGroupCount[2]    = 65535;
+    _caps.maxComputeWorkGroupSize[0]     = 1024;
+    _caps.maxComputeWorkGroupSize[1]     = 1024;
+    _caps.maxComputeWorkGroupSize[2]     = 64;
+    _caps.maxComputeWorkGroupInvocations = 1024;
+    _caps.maxStorageBufferBindings       = 31;
+    _caps.maxStorageBufferSize           = static_cast<size_t>(_mtlDevice.maxBufferLength);
 
     return true;
 }
@@ -443,6 +438,11 @@ Buffer* GraphicsDeviceImpl::createBuffer(size_t size, BufferType type, BufferUsa
     return new BufferImpl(_mtlDevice, size, type, usage, initial);
 }
 
+Buffer* GraphicsDeviceImpl::createBuffer(const BufferDesc& desc, const void* initial)
+{
+    return new BufferImpl(_mtlDevice, desc.size, desc.type, desc.usage, initial, desc.stride);
+}
+
 Texture* GraphicsDeviceImpl::createTexture(const TextureDesc& descriptor, std::optional<Color>)
 {
     return new TextureImpl(_mtlDevice, descriptor);
@@ -450,7 +450,7 @@ Texture* GraphicsDeviceImpl::createTexture(const TextureDesc& descriptor, std::o
 
 Texture* GraphicsDeviceImpl::createTextureFromNativeHandle(const ExternalTextureDesc& descriptor)
 {
-    id<MTLTexture> nativeTexture = (id<MTLTexture>)descriptor.nativeTexture.ptr;
+    id<MTLTexture> nativeTexture = (__bridge id<MTLTexture>)descriptor.nativeTexture.ptr;
     if (!nativeTexture)
         return nullptr;
 
@@ -472,14 +472,33 @@ DepthStencilState* GraphicsDeviceImpl::createDepthStencilState()
     return new DepthStencilStateImpl(_mtlDevice);
 }
 
-RenderPipeline* GraphicsDeviceImpl::createRenderPipeline()
+GraphicsPipeline* GraphicsDeviceImpl::createGraphicsPipeline()
 {
-    return new RenderPipelineImpl(_mtlDevice);
+    return new GraphicsPipelineImpl(_mtlDevice);
+}
+
+ComputePipeline* GraphicsDeviceImpl::createComputePipeline(Program* program)
+{
+    if (!program || !program->isValid() || !program->getCSModule())
+        return nullptr;
+
+    auto* pipeline = new ComputePipelineImpl(_mtlDevice, static_cast<ProgramImpl*>(program));
+    if (!pipeline->isValid())
+    {
+        pipeline->release();
+        return nullptr;
+    }
+    return pipeline;
 }
 
 Program* GraphicsDeviceImpl::createProgram(Data vsData, Data fsData)
 {
     return new ProgramImpl(vsData, fsData);
+}
+
+Program* GraphicsDeviceImpl::createComputeProgram(Data csData)
+{
+    return new ProgramImpl(csData);
 }
 
 ShaderModule* GraphicsDeviceImpl::createShaderModule(ShaderStage stage, Data& chunk)
@@ -501,6 +520,9 @@ SamplerHandle GraphicsDeviceImpl::createSampler(const SamplerDesc& desc)
     case SamplerFilter::MIN_ANISOTROPIC:
         samplerDesc.minFilter = MTLSamplerMinMagFilterLinear;
         break;
+    default:
+        samplerDesc.minFilter = MTLSamplerMinMagFilterLinear;
+        break;
     }
 
     samplerDesc.magFilter =
@@ -518,13 +540,21 @@ SamplerHandle GraphicsDeviceImpl::createSampler(const SamplerDesc& desc)
     case SamplerFilter::MIP_LINEAR:
         samplerDesc.mipFilter = MTLSamplerMipFilterLinear;
         break;
+    default:
+        samplerDesc.mipFilter = MTLSamplerMipFilterNotMipmapped;
+        break;
     }
 
     bool supportBorderColor{false};
     if (@available(iOS 14.0, macOS 10.12, *))
     {
-        supportBorderColor = ([_mtlDevice respondsToSelector:@selector(supportsSamplerBorderColor)] &&
-                              (bool)(void*)[_mtlDevice performSelector:@selector(supportsSamplerBorderColor)]);
+        const SEL selector = @selector(supportsSamplerBorderColor);
+        if ([_mtlDevice respondsToSelector:selector])
+        {
+            const IMP imp                         = [(NSObject*)_mtlDevice methodForSelector:selector];
+            const auto supportsSamplerBorderColor = reinterpret_cast<BOOL (*)(id, SEL)>(imp);
+            supportBorderColor                    = supportsSamplerBorderColor(_mtlDevice, selector);
+        }
     }
 
     // --- Address Modes ---
@@ -588,16 +618,15 @@ SamplerHandle GraphicsDeviceImpl::createSampler(const SamplerDesc& desc)
 
     // --- Create Sampler ---
     id<MTLSamplerState> sampler = [_mtlDevice newSamplerStateWithDescriptor:samplerDesc];
-    [samplerDesc release];
-
-    return SamplerHandle{(__bridge void*)sampler};
+    return SamplerHandle{(__bridge_retained void*)sampler};
 }
 
 void GraphicsDeviceImpl::destroySampler(SamplerHandle& sampler)
 {
     if (sampler)
     {
-        [static_cast<id<MTLSamplerState>>(sampler) release];
+        id<MTLSamplerState> retainedSampler = (__bridge_transfer id<MTLSamplerState>)sampler.ptr;
+        AX_UNUSED_PARAM(retainedSampler);
         sampler = nullptr;
     }
 }
@@ -645,6 +674,11 @@ bool GraphicsDeviceImpl::checkForFeatureSupported(FeatureType feature)
         break;
     case FeatureType::ASTC:
         featureSupported = supportASTC(_featureSet);
+        break;
+    case FeatureType::COMPUTE_SHADER:
+    case FeatureType::STORAGE_BUFFER:
+    case FeatureType::TEXTURE_3D:
+        featureSupported = true;
         break;
     default:
         break;
