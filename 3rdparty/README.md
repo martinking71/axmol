@@ -36,7 +36,7 @@
 
 ## curl
 - [![Upstream](https://img.shields.io/github/v/release/curl/curl?label=Upstream)](https://github.com/curl/curl)
-- Version: 8.21.0
+- Version: 8.22.0
 - License: Curl (MIT/X)
 
 ## doctest
@@ -51,7 +51,7 @@
 
 ## fast_float
 - [![Upstream](https://img.shields.io/github/v/release/fastfloat/fast_float?label=Upstream)](https://github.com/fastfloat/fast_float)
-- Version: 8.2.10
+- Version: 8.3.0
 - License: MIT
 
 ## flatbuffers
@@ -127,7 +127,7 @@
 
 - luajit
   - Upstream: https://github.com/LuaJIT/LuaJIT
-  - Version: 2.1-acb2234
+  - Version: 2.1-24c20c9
   - License: MIT
 
 - lua-cjson
@@ -157,7 +157,7 @@
 
 ## oboe (Android only)
 - [![Upstream](https://img.shields.io/github/v/release/google/oboe?label=Upstream)](https://github.com/google/oboe)
-- Version: 1.10.0
+- Version: 1.11.0
 - License: Apache-2.0
 
 ## ogg
@@ -178,7 +178,7 @@
 
 ## OpenXR-SDK
 - [![Upstream](https://img.shields.io/github/v/release/KhronosGroup/OpenXR-SDK?label=Upstream)](https://github.com/KhronosGroup/OpenXR-SDK)
-- Version: 1.1.62
+- Version: 1.1.63
 - License: Apache-2.0
 
 ## OpenAL Soft
@@ -196,7 +196,7 @@
 
 ## OpenSSL
 - [![Upstream](https://img.shields.io/github/v/release/openssl/openssl?label=Upstream)](https://github.com/openssl/openssl)
-- Version: 3.0.21
+- Version: 3.0.22
 - License: Apache-2.0
 
 ## lunasvg
@@ -241,7 +241,7 @@
 
 ## simdjson
 - [![Upstream](https://img.shields.io/github/v/tag/simdjson/simdjson?label=Upstream)](https://github.com/simdjson/simdjson)
-- Version: 4.6.6
+- Version: 4.6.11
 - License: Apache-2.0
 
 ## stb (stb_image)
@@ -251,7 +251,7 @@
 
 ## tracy
 - [![Upstream](https://img.shields.io/github/v/release/wolfpld/tracy?label=Upstream)](https://github.com/wolfpld/tracy)
-- Version: 0.13.1
+- Version: 0.14.1
 - License: BSD-3-Clause
 
 ## unzip (minizip-1.2)
