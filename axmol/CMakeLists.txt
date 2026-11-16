@@ -79,12 +79,18 @@ endif()
 if(AX_RENDER_API STREQUAL "auto")
   if(APPLE)
     set(AX_RENDER_API "mtl" CACHE STRING "" FORCE)
-  else()
+  elseif(ANDROID OR LINUX)
+    set(AX_RENDER_API "vk;gl" CACHE STRING "" FORCE)
+  elseif(WINRT)
+    set(AX_RENDER_API "d3d11;d3d12;gl" CACHE STRING "" FORCE)
+  elseif(WIN32)
+    set(AX_RENDER_API "d3d11;d3d12;vk;gl" CACHE STRING "" FORCE)
+  else() # WebAssembly and other platforms default to OpenGL
     set(AX_RENDER_API "gl" CACHE STRING "" FORCE)
   endif()
 endif()
 
-string(REPLACE "," " " AX_RENDER_API_LIST "${AX_RENDER_API}")
+string(REPLACE ";" " " AX_RENDER_API_LIST "${AX_RENDER_API}")
 separate_arguments(AX_RENDER_API_LIST)
 
 # Remove duplicates
@@ -147,27 +153,29 @@ if(AX_GLES_PROFILE)
 endif()
 message(STATUS "${_RENDER_NOTICE}")
 
+option(AX_FEAT_HINT "The default features hint" ON)
+
 if(LINUX)
   include(CheckIncludeFile)
   check_include_file(vlc/vlc.h _AX_HAVE_VLC)
   cmake_dependent_option(AX_ENABLE_VLC_MEDIA "Enabling vlc media" ON "_AX_HAVE_VLC" OFF)
 endif()
 
-cmake_dependent_option(AX_ENABLE_MSEDGE_WEBVIEW2 "Use Microsoft Edge webview2" ON "WIN32 AND NOT WINRT" OFF)
+cmake_dependent_option(AX_ENABLE_MSEDGE_WEBVIEW2 "Use Microsoft Edge webview2" ${AX_FEAT_HINT} "(WIN32 AND NOT WINRT)" OFF)
 
-cmake_dependent_option(AX_ENABLE_MFMEDIA "Enabling microsoft media foundation" ON "WIN32" OFF)
+cmake_dependent_option(AX_ENABLE_MFMEDIA "Enabling microsoft media foundation" ${AX_FEAT_HINT} "WIN32" OFF)
 cmake_dependent_option(AX_ENABLE_VLC_MEDIA "Enabling vlc media" OFF "(WIN32 AND NOT WINRT) OR LINUX" OFF)
 
 cmake_dependent_option(AX_ENABLE_WAYLAND "Enabling linux wayland" OFF "LINUX" OFF)
 
-option(AX_ENABLE_PHYSICS_2D "Build Physics2D support" ON)
-cmake_dependent_option(AX_ENABLE_VIDEO "Build video support" ON "AX_ENABLE_MFMEDIA OR AX_ENABLE_VLC_MEDIA OR APPLE OR ANDROID" OFF)
-option(AX_ENABLE_AUDIO "Build audio support" ON)
-option(AX_ENABLE_OPUS "Build with opus support" ON)
+option(AX_ENABLE_PHYSICS_2D "Build Physics2D support" ${AX_FEAT_HINT})
+cmake_dependent_option(AX_ENABLE_VIDEO "Build video support" ${AX_FEAT_HINT} "AX_ENABLE_MFMEDIA OR AX_ENABLE_VLC_MEDIA OR APPLE OR ANDROID OR WASM" OFF)
+option(AX_ENABLE_AUDIO "Build audio support" ${AX_FEAT_HINT})
+cmake_dependent_option(AX_ENABLE_OPUS "Build with opus support" ${AX_FEAT_HINT} "AX_ENABLE_AUDIO" OFF)
 
-option(AX_ENABLE_3D "Build 3D support" ON)
-cmake_dependent_option(AX_ENABLE_PHYSICS_3D "Build Physics3D support" ON "AX_ENABLE_3D" OFF)
-cmake_dependent_option(AX_ENABLE_NAVMESH "Build NavMesh support" ON "AX_ENABLE_3D" OFF)
+option(AX_ENABLE_3D "Build 3D support" ${AX_FEAT_HINT})
+cmake_dependent_option(AX_ENABLE_PHYSICS_3D "Build Physics3D support" ${AX_FEAT_HINT} "AX_ENABLE_3D" OFF)
+cmake_dependent_option(AX_ENABLE_NAVMESH "Build NavMesh support" ${AX_FEAT_HINT} "AX_ENABLE_3D" OFF)
 
 option(AX_ENABLE_VR "Build VR support" OFF)
 
@@ -192,6 +200,7 @@ option(AX_ENABLE_EXT_SCENEIO "Build extension sceneio (aka cocostudio)" ${AX_EXT
 option(AX_ENABLE_EXT_FAIRYGUI "Build extension FairyGUI" ${AX_EXT_HINT})
 option(AX_ENABLE_EXT_IMGUI "Build extension ImGui" ${AX_EXT_HINT})
 option(AX_ENABLE_EXT_EFFEKSEER "Build extension Effekseer" ${AX_EXT_HINT})
+option(AX_ENABLE_EXT_SCENEEXT "Whether enable extension: sceneext" ${AX_EXT_HINT})
 option(AX_ENABLE_EXT_LIVE2D "Build extension Live2D" OFF)
 
 cmake_dependent_option(AX_ENABLE_OPENXR "Build OpenXR support" OFF "AX_ENABLE_VR;NOT IOS;NOT WASM" OFF)
@@ -426,6 +435,13 @@ set_source_files_properties(
   ${_AX_ROOT}/axmol/renderer/shaders/skinPositionNormalTexture_vs.hlsl
   PROPERTIES AXSLCC_VARIANT_DEFINES "USE_NORMAL_MAPPING=1"
 )
+set_source_files_properties(
+  ${_AX_ROOT}/axmol/renderer/shaders/label_normal_fs.hlsl
+  ${_AX_ROOT}/axmol/renderer/shaders/label_outline_fs.hlsl
+  ${_AX_ROOT}/axmol/renderer/shaders/positionTextureColor_fs.hlsl
+  ${_AX_ROOT}/axmol/renderer/shaders/dualSampler_fs.hlsl
+  PROPERTIES AXSLCC_VARIANT_DEFINES "USE_POINT_SAMPLER=1"
+)
 ax_add_shader_target_for(${_AX_CORE_LIB} FILES ${_builtin_shaders} BUILTIN)
 
 ax_config_pred(${_AX_CORE_LIB} AX_ENABLE_MFMEDIA)
@@ -630,13 +646,17 @@ endif()
 if(BUILD_ENGINE_BEGAN)
     add_custom_target(axmol-sdk)
 
-    add_dependencies(axmol-sdk axmol ${_AX_EXTENSION_LIBS})
-
+    set(_sdk_exts ${_AX_EXTENSION_LIBS})
+    if(AX_ENABLE_EXT_LUA)
+      list(APPEND _sdk_exts axlua)
+    endif()
+    add_dependencies(axmol-sdk axmol ${_sdk_exts})
+   
     # Automatically gather only the necessary libraries (Core + 3rdparty + Extensions)
     ax_collect_sdk_targets(${CMAKE_SOURCE_DIR} _axmol_libs)
 
     # Export the clean library target map
     export(TARGETS ${_axmol_libs} FILE "${CMAKE_BINARY_DIR}/AxmolTargets.cmake")
 
-    message(STATUS "🔧 Created target 'axmol-sdk' (included extensions: ${_AX_EXTENSION_LIBS}) and exported clean SDK library map (Tests excluded).")
+    message(STATUS "🔧 Created target 'axmol-sdk' (included extensions: ${_sdk_exts}) and exported clean SDK library map (Tests excluded).")
 endif()

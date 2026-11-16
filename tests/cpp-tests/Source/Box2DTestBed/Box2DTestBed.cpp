@@ -219,10 +219,10 @@ void Box2DTestBed::onPointerMove(PointerEvent* ev)
     }
 }
 
-bool Box2DTestBed::onPointerScroll(PointerEvent* ev)
+void Box2DTestBed::onPointerScroll(PointerEvent* ev)
 {
     _debugDrawNode->setPTMRatio(_debugDrawNode->getPTMRatio() - ev->getScrollY());
-    return true;
+    ev->stopPropagation();
 }
 
 void Box2DTestBed::onEnter()
@@ -350,14 +350,6 @@ void Box2DTestBed::renderSamples()
                 ImGui::Checkbox("Frame Time", &s_context.frameTime);
 
                 ImGui::Separator();
-
-                {
-                    bool changed            = false;
-                    const char* drawTypes[] = {"None", "Clip", "AnchorA", "AnchorB", "Average"};
-                    int drawType            = int(s_context.debugDraw.contactDrawType);
-                    changed = changed || ImGui::Combo("Contact", &drawType, drawTypes, IM_ARRAYSIZE(drawTypes));
-                    s_context.debugDraw.contactDrawType = b2ContactDrawType(drawType);
-                }
 
                 ImGui::Checkbox("Contact Normals", &s_context.debugDraw.drawContactNormals);
                 ImGui::Checkbox("Contact Features", &s_context.debugDraw.drawContactFeatures);

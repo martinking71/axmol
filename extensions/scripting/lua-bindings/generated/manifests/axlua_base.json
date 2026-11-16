@@ -22737,7 +22737,7 @@
         {
           "nativeName": "onPointerScroll",
           "luaName": "onPointerScroll",
-          "fieldType": "std::function\u003Cbool (ax::PointerEvent *)\u003E"
+          "fieldType": "std::function\u003Cvoid (ax::PointerEvent *)\u003E"
         },
         {
           "nativeName": "onPointerUp",
@@ -24829,6 +24829,17 @@
           "luaName": "getScissorInPoints",
           "declaringType": "ax::RenderViewCore",
           "returnType": "ax::Rect",
+          "parameterTypes": [],
+          "defaultValues": [],
+          "isStatic": false,
+          "isConst": true,
+          "isVariadic": false
+        },
+        {
+          "nativeName": "getSurfaceHandle",
+          "luaName": "getSurfaceHandle",
+          "declaringType": "ax::RenderViewCore",
+          "returnType": "ax::SurfaceHandle",
           "parameterTypes": [],
           "defaultValues": [],
           "isStatic": false,

@@ -15,6 +15,7 @@
 #if (AX_TARGET_PLATFORM == AX_PLATFORM_ANDROID)
 
 #    include "axmol/ui/EditBox/EditBox.h"
+#    include <cmath>
 #    include <jni.h>
 #    include "axmol/platform/android/jni/JniHelper.h"
 #    include "axmol/2d/Label.h"
@@ -22,7 +23,6 @@
 #    include "axmol/math/Vec2.h"
 #    include "axmol/ui/UIHelper.h"
 #    include "axmol/base/Director.h"
-#    include "axmol/platform/FileUtils.h"
 #    include "yasio/tlx/string_view.hpp"
 
 namespace ax
@@ -63,24 +63,9 @@ void EditBoxImplAndroid::createNativeControl()
 
 void EditBoxImplAndroid::setNativeFont(std::string_view fontName, int fontSize)
 {
-    auto director         = ax::Director::getInstance();
-    auto renderView       = director->getRenderView();
-    auto isFontFileExists = ax::FileUtils::getInstance()->isFileExist(fontName);
-
-    std::string realFontPath;
-    if (isFontFileExists)
-    {
-        auto realFontPath = ax::FileUtils::getInstance()->fullPathForFilename(fontName);
-        if (tlx::starts_with(std::string_view{realFontPath}, "assets/"sv))
-        {
-            realFontPath = realFontPath.substr(sizeof("assets/") - 1);  // Chop out the 'assets/' portion of the path.
-        }
-    }
-    else
-    {
-        realFontPath = fontName;
-    }
-    JniHelper::callStaticVoidMethod(editBoxClassName, "setFont", _editBoxIndex, realFontPath,
+    auto director   = ax::Director::getInstance();
+    auto renderView = director->getRenderView();
+    JniHelper::callStaticVoidMethod(editBoxClassName, "setFont", _editBoxIndex, fontName,
                                     (float)fontSize * renderView->getScaleX());
 }
 
@@ -149,8 +134,9 @@ void EditBoxImplAndroid::setNativeVisible(bool visible)
 
 void EditBoxImplAndroid::updateNativeFrame(const Rect& rect)
 {
-    JniHelper::callStaticVoidMethod(editBoxClassName, "setEditBoxViewRect", _editBoxIndex, (int)rect.origin.x,
-                                    (int)rect.origin.y, (int)rect.size.width, (int)rect.size.height);
+    JniHelper::callStaticVoidMethod(editBoxClassName, "setEditBoxViewRect", _editBoxIndex,
+                                    (int)std::lround(rect.origin.x), (int)std::lround(rect.origin.y),
+                                    (int)std::lround(rect.size.width), (int)std::lround(rect.size.height));
 }
 
 void EditBoxImplAndroid::nativeOpenKeyboard()

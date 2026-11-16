@@ -185,6 +185,10 @@ function(ax_link_cxx_prebuilt APP_NAME AX_ROOT_DIR AX_PREBUILT_DIR)
     list(APPEND LIBS glad)
   endif()
 
+  if(AX_ENABLE_VK)
+    list(APPEND LIBS vkma)
+  endif()
+
   if(AX_ENABLE_OPUS)
     list(APPEND LIBS opus)
   endif()
@@ -220,6 +224,11 @@ function(ax_link_cxx_prebuilt APP_NAME AX_ROOT_DIR AX_PREBUILT_DIR)
   ax_link_pred(AX_ENABLE_EXT_SPINE LIBS spine INCLUDES
     "${AX_ROOT_DIR}/extensions/spine/runtime/include" "${AX_ROOT_DIR}/extensions/spine/src"
   )
+
+  if(AX_PROFILER_BACKEND STREQUAL "TRACY")
+    list(APPEND LIBS "TracyClient")
+    target_include_directories(${APP_NAME} PRIVATE "${Tracy_SOURCE_DIR}/public")
+  endif()
 
   if(WINDOWS)
     target_link_libraries(${APP_NAME}

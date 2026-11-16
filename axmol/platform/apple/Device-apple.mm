@@ -26,6 +26,7 @@
 
 #include "axmol/base/Types.h"
 #include "axmol/platform/apple/Device-apple.h"
+#include "axmol/platform/apple/FoundationBridge.h"
 
 namespace FontUtils
 {
@@ -91,7 +92,6 @@ static CGFloat maxMeasureDimension()
 static PlatformFont* createFont(const char* fontName, CGFloat fontSize)
 {
     NSString* name = [NSString stringWithUTF8String:fontName];
-    name           = [[name lastPathComponent] stringByDeletingPathExtension];
 
 #if AX_TARGET_PLATFORM == AX_PLATFORM_MAC
     PlatformFont* font = [NSFont fontWithName:name size:fontSize];
@@ -239,7 +239,7 @@ static bool prepareTextLayout(std::string_view text,
     if (text.empty())
         return false;
 
-    auto* string = [[NSString alloc] initWithBytes:text.data() length:text.size() encoding:NSUTF8StringEncoding];
+    auto* string = svtons(text);
     if (!string)
         return false;
 
