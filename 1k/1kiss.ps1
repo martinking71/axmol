@@ -1383,6 +1383,11 @@ function setup_android_sdk() {
     $sdkmanager_prog, $sdkmanager_ver = (find_prog -name 'cmdlinetools' -cmd 'sdkmanager' -path $cmdlinetools_bin -params "--version", "--sdk_root=$sdk_root")
     if (!$sdkmanager_prog) {
         $suffix = @('win', 'linux', 'mac')[$HOST_OS_INT]
+        # From cmdline-tools 22.0 Google ships separate macOS zips per CPU
+        # (commandlinetools-mac_arm64-*, commandlinetools-mac_x86_64-*); plain -mac- 404s.
+        if ($suffix -eq 'mac' -and [version]$cmdlinetools_ver -ge [version]'22.0') {
+            $suffix = if ($HOST_CPU -eq 'arm64') { 'mac_arm64' } else { 'mac_x86_64' }
+        }
         if (!$sdkmanager_prog) {
             $1k.println("Installing cmdlinetools version: $sdkmanager_ver ...")
 
